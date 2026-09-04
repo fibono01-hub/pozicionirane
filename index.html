@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Позициониране — реални данни от деривати</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Позициониране">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#151A2B">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ground:#151A2B;
+  --panel:#1D2438;
+  --rule:#2C3550;
+  --ink:#E6E9F2;
+  --ink-dim:#8B95B2;
+  --long:#E0A03C;
+  --short:#3FB6A6;
+  --hot:#E4685B;
+  --sans:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,'SF Mono',Menlo,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{
+  background:var(--ground);color:var(--ink);
+  font-family:var(--sans);font-size:15px;line-height:1.5;
+  padding:calc(20px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right)) calc(64px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));
+  max-width:720px;margin:0 auto;
+  font-variant-numeric:tabular-nums;
+}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+/* ---- header ---- */
+header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:20px}
+h1{font-size:19px;font-weight:600;letter-spacing:-.01em}
+#stamp{font-size:12px;color:var(--ink-dim);font-family:var(--mono)}
+
+.controls{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:26px}
+.controls button{
+  background:transparent;border:1px solid var(--rule);color:var(--ink-dim);
+  padding:7px 13px;border-radius:2px;font:inherit;font-size:14px;cursor:pointer;
+}
+.controls button[aria-pressed="true"]{border-color:var(--ink);color:var(--ink);background:var(--panel)}
+.controls button:focus-visible{outline:2px solid var(--short);outline-offset:2px}
+#reload{margin-left:auto;border-style:dashed}
+
+/* ---- verdict hero ---- */
+#verdict{
+  border-left:3px solid var(--rule);padding:2px 0 2px 18px;margin-bottom:34px;
+}
+#verdict .line{font-size:26px;line-height:1.25;font-weight:500;letter-spacing:-.02em;text-wrap:balance}
+#verdict .why{margin-top:10px;color:var(--ink-dim);font-size:14px;max-width:56ch}
+#verdict .facts{display:flex;gap:20px;margin-top:16px;flex-wrap:wrap;font-family:var(--mono);font-size:13px}
+#verdict .facts b{font-weight:500;display:block;color:var(--ink)}
+#verdict .facts span{color:var(--ink-dim);font-size:11px}
+
+section{margin-bottom:34px}
+h2{font-size:13px;font-weight:600;color:var(--ink-dim);margin-bottom:14px}
+h2 em{font-style:normal;color:var(--ink)}
+
+/* ---- diverging funding bars ---- */
+.venue{display:grid;grid-template-columns:74px 1fr 84px;align-items:center;gap:10px;margin-bottom:9px;font-size:14px}
+.venue .name{color:var(--ink-dim)}
+.track{position:relative;height:20px;background:var(--panel);border-radius:1px}
+.track::before{content:'';position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:var(--rule)}
+.fill{position:absolute;top:3px;bottom:3px;border-radius:1px}
+.venue .val{text-align:right;font-family:var(--mono);font-size:13px}
+.venue.err .val{color:var(--hot);font-size:11px}
+
+/* ---- chart ---- */
+canvas{width:100%;height:290px;display:block}
+.legend{display:flex;gap:16px;font-size:12px;color:var(--ink-dim);margin-top:8px}
+.legend i{display:inline-block;width:14px;height:2px;vertical-align:middle;margin-right:5px}
+
+/* ---- ratio ---- */
+.ratio{margin-bottom:16px}
+.ratio .head{display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px}
+.ratio .head span:last-child{font-family:var(--mono)}
+.split{display:flex;height:22px;border-radius:1px;overflow:hidden;background:var(--panel)}
+.split .l{background:var(--long)}
+.split .s{background:var(--short)}
+.ratio .foot{font-size:11px;color:var(--ink-dim);margin-top:5px}
+
+/* ---- hyperliquid ---- */
+.addr{display:flex;gap:8px;margin-bottom:14px}
+.addr input{
+  flex:1;min-width:0;background:var(--panel);border:1px solid var(--rule);color:var(--ink);
+  padding:9px 11px;border-radius:2px;font-family:var(--mono);font-size:13px;
+}
+.addr input::placeholder{color:#5C6584}
+.addr button{background:var(--ink);color:var(--ground);border:0;padding:9px 15px;border-radius:2px;font:inherit;font-weight:500;cursor:pointer}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;font-weight:500;color:var(--ink-dim);font-size:11px;padding-bottom:7px;border-bottom:1px solid var(--rule)}
+td{padding:9px 0;border-bottom:1px solid var(--rule);font-family:var(--mono)}
+td:not(:first-child),th:not(:first-child){text-align:right}
+.pos{color:var(--short)}.neg{color:var(--hot)}
+.side-l{color:var(--long)}.side-s{color:var(--short)}
+
+.empty{color:var(--ink-dim);font-size:13px;padding:14px 0}
+#analysis p{margin-bottom:11px;font-size:14px;line-height:1.6;max-width:60ch}
+#analysis p:last-child{margin-bottom:0}
+#analysis b{font-weight:500;color:var(--ink)}
+#analysis .tag{display:inline-block;padding:1px 7px;border-radius:2px;font-size:11px;font-family:var(--mono);margin-right:6px;vertical-align:1px}
+#a-risk.lo{color:var(--short)}#a-risk.mid{color:var(--long)}#a-risk.hi{color:var(--hot)}
+footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:var(--ink-dim);line-height:1.65;max-width:62ch}
+@media (prefers-reduced-motion:no-preference){#stamp{transition:opacity .2s}}
+.loading #stamp{opacity:.35}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Позициониране</h1>
+  <span id="stamp">зарежда…</span>
+</header>
+
+<div class="controls" id="symbols">
+  <button data-sym="ETH" aria-pressed="true">ETH</button>
+  <button data-sym="BTC" aria-pressed="false">BTC</button>
+  <button data-sym="SOL" aria-pressed="false">SOL</button>
+  <button data-sym="HYPE" aria-pressed="false">HYPE</button>
+  <button id="reload">Обнови</button>
+</div>
+
+<div id="verdict">
+  <div class="line" id="v-line">Изчаква данни</div>
+  <div class="why" id="v-why"></div>
+  <div class="facts" id="v-facts"></div>
+</div>
+
+<section>
+  <h2>Фъндинг по борси — <em>годишно изражение</em></h2>
+  <div id="funding"></div>
+</section>
+
+<section>
+  <h2>Открит интерес срещу цена</h2>
+  <div class="controls" id="ranges" style="margin-bottom:12px">
+    <button data-range="1h:24" aria-pressed="false">24ч</button>
+    <button data-range="4h:42" aria-pressed="true">7 дни</button>
+    <button data-range="1d:30" aria-pressed="false">30 дни</button>
+  </div>
+  <canvas id="chart" width="1400" height="560"></canvas>
+  <div class="legend">
+    <span><i style="background:var(--ink-dim)"></i>Цена</span>
+    <span><i style="background:var(--long)"></i>Открит интерес</span>
+    <span><i style="background:var(--short)"></i>Фъндинг, колони долу</span>
+  </div>
+  <div class="legend">
+    <span><i style="background:var(--hot);height:9px"></i>Каскада, лонгове</span>
+    <span><i style="background:var(--short);height:9px"></i>Каскада, шортове</span>
+    <span id="casc-n" style="margin-left:auto;font-family:var(--mono)"></span>
+  </div>
+</section>
+
+<section>
+  <h2>Съотношение лонг / шорт</h2>
+  <div id="ratios"></div>
+</section>
+
+<section>
+  <h2>Hyperliquid — <em>реални позиции на верига</em></h2>
+  <div id="hl-market"></div>
+  <div class="addr">
+    <input id="hl-addr" placeholder="0x… адрес на портфейл" spellcheck="false">
+    <button id="hl-go">Виж</button>
+  </div>
+  <div id="hl-pos"><div class="empty">Въведи адрес, за да видиш реалните му позиции, вход и ликвидационна цена.</div></div>
+</section>
+
+<section>
+  <h2>Обобщение — <em id="a-risk">изчаква</em></h2>
+  <div id="analysis"><div class="empty">Изчаква данни от всички източници.</div></div>
+</section>
+
+<footer>
+  Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
+  Фъндингът и откритият интерес идват от публичните API-та на Binance, Bybit, OKX и Hyperliquid.
+  Ако някоя борса покаже грешка, най-честата причина е блокиране по регион или ограничение на заявките — изчакай минута и обнови.
+</footer>
+
+<script>
+const S = { sym:'ETH', range:'4h:42' };
+const bn = 'https://fapi.binance.com';
+
+const fmt = (n,d=2)=> n==null||!isFinite(n) ? '—' : n.toLocaleString('bg-BG',{minimumFractionDigits:d,maximumFractionDigits:d});
+const usd = n => {
+  if(n==null||!isFinite(n)) return '—';
+  const a=Math.abs(n);
+  if(a>=1e9) return (n/1e9).toFixed(2)+' млрд';
+  if(a>=1e6) return (n/1e6).toFixed(1)+' млн';
+  if(a>=1e3) return (n/1e3).toFixed(1)+' хил';
+  return n.toFixed(0);
+};
+const pct = n => (n>0?'+':'')+fmt(n,2)+'%';
+
+async function j(url,opt){
+  const r = await fetch(url,opt);
+  if(!r.ok) throw new Error('HTTP '+r.status);
+  return r.json();
+}
+const hlInfo = body => j('https://api.hyperliquid.xyz/info',{
+  method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)
+});
+
+/* ---------------- funding ---------------- */
+// нормализира към годишен процент спрямо интервала на изплащане
+const annual = (rate, hoursPerPayout) => rate * (8760/hoursPerPayout) * 100;
+
+async function loadFunding(){
+  const box = document.getElementById('funding');
+  const sym = S.sym;
+  const venues = [
+    { name:'Binance', hrs:8, get:async()=>{
+        const d = await j(`${bn}/fapi/v1/premiumIndex?symbol=${sym}USDT`);
+        return parseFloat(d.lastFundingRate);
+      }},
+    { name:'Bybit', hrs:8, get:async()=>{
+        const d = await j(`https://api.bybit.com/v5/market/tickers?category=linear&symbol=${sym}USDT`);
+        return parseFloat(d.result.list[0].fundingRate);
+      }},
+    { name:'OKX', hrs:8, get:async()=>{
+        const d = await j(`https://www.okx.com/api/v5/public/funding-rate?instId=${sym}-USDT-SWAP`);
+        return parseFloat(d.data[0].fundingRate);
+      }},
+    { name:'Hyperliquid', hrs:1, get:async()=>{
+        const [meta,ctx] = await hlInfo({type:'metaAndAssetCtxs'});
+        const i = meta.universe.findIndex(u=>u.name===sym);
+        if(i<0) throw new Error('няма пазар');
+        return parseFloat(ctx[i].funding);
+      }},
+  ];
+
+  box.innerHTML = venues.map(v=>
+    `<div class="venue" id="f-${v.name}"><span class="name">${v.name}</span>
+     <span class="track"><span class="fill"></span></span><span class="val">…</span></div>`).join('');
+
+  const results = await Promise.allSettled(venues.map(v=>v.get()));
+  const vals = [];
+  results.forEach((r,i)=>{
+    const v = venues[i], row = document.getElementById('f-'+v.name);
+    if(r.status==='rejected'){ row.classList.add('err'); row.querySelector('.val').textContent='няма достъп'; return; }
+    const a = annual(r.value, v.hrs);
+    vals.push({name:v.name, val:a});
+    row.querySelector('.val').textContent = pct(a);
+  });
+
+  // мащаб: най-голямото абсолютно отклонение задава краищата
+  const max = Math.max(20, ...vals.map(x=>Math.abs(x.val))) * 1.05;
+  results.forEach((r,i)=>{
+    if(r.status==='rejected') return;
+    const a = annual(r.value, venues[i].hrs);
+    const w = Math.abs(a)/max*50;
+    const f = document.getElementById('f-'+venues[i].name).querySelector('.fill');
+    f.style.background = a>=0 ? 'var(--long)' : 'var(--short)';
+    if(a>=0){ f.style.left='50%'; f.style.width=w+'%'; }
+    else { f.style.right='50%'; f.style.width=w+'%'; }
+  });
+
+  return vals;
+}
+
+/* ---------------- OI + цена + фъндинг ---------------- */
+let series = null;
+
+// колко изплащания на фъндинг покриват избрания период (по 8 часа)
+const payouts = {'1h:24':5,'4h:42':23,'1d:30':93};
+
+async function loadSeries(){
+  const [period,limit] = S.range.split(':');
+  const sym = S.sym+'USDT';
+  const [oi,kl,fr] = await Promise.all([
+    j(`${bn}/futures/data/openInterestHist?symbol=${sym}&period=${period}&limit=${limit}`),
+    j(`${bn}/fapi/v1/klines?symbol=${sym}&interval=${period}&limit=${limit}`),
+    j(`${bn}/fapi/v1/fundingRate?symbol=${sym}&limit=${payouts[S.range]||30}`).catch(()=>[])
+  ]);
+  series = {
+    t: oi.map(d=>d.timestamp),
+    oi: oi.map(d=>parseFloat(d.sumOpenInterestValue)),
+    px: kl.map(k=>parseFloat(k[4])),
+    fr: fr.map(d=>({t:d.fundingTime, v:annual(parseFloat(d.fundingRate),8)}))
+  };
+  series.casc = findCascades(series.px, series.oi);
+  drawChart();
+  return series;
+}
+
+// каскада = спад на открития интерес и рязко движение на цената в един интервал
+function findCascades(px, oi){
+  const n = Math.min(px.length, oi.length);
+  if(n < 5) return [];
+  const dOi=[], dPx=[];
+  for(let i=1;i<n;i++){
+    dOi.push((oi[i]-oi[i-1])/oi[i-1]*100);
+    dPx.push((px[i]-px[i-1])/px[i-1]*100);
+  }
+  const sd = a => { const m=a.reduce((x,y)=>x+y,0)/a.length;
+    return Math.sqrt(a.reduce((s,v)=>s+(v-m)**2,0)/a.length) || 1; };
+  const sOi = sd(dOi), sPx = sd(dPx);
+  const hits = [];
+  for(let k=0;k<dOi.length;k++){
+    if(dOi[k] < -Math.max(1.4*sOi, 0.8) && Math.abs(dPx[k]) > Math.max(1.1*sPx, 0.5))
+      hits.push({i:k+1, dir: dPx[k]<0 ? 'long' : 'short', oi:dOi[k], px:dPx[k]});
+  }
+  const zones = [];
+  hits.forEach(h=>{
+    const last = zones[zones.length-1];
+    if(last && h.i===last.end+1 && h.dir===last.dir){
+      last.end=h.i; last.oi=Math.min(last.oi,h.oi);
+      if(Math.abs(h.px)>Math.abs(last.px)) last.px=h.px;
+    } else zones.push({start:h.i, end:h.i, dir:h.dir, oi:h.oi, px:h.px});
+  });
+  return zones;
+}
+
+function drawChart(){
+  const c = document.getElementById('chart'), g = c.getContext('2d');
+  const W=c.width, H=c.height, pad={l:8,r:8,t:16,b:30};
+  g.clearRect(0,0,W,H);
+  if(!series || series.oi.length<2) return;
+
+  const css = getComputedStyle(document.documentElement);
+  const dim  = css.getPropertyValue('--ink-dim').trim();
+  const rule = css.getPropertyValue('--rule').trim();
+  const long = css.getPropertyValue('--long').trim();
+  const short= css.getPropertyValue('--short').trim();
+  const hot  = css.getPropertyValue('--hot').trim();
+
+  // два панела: цена/интерес горе, фъндинг долу
+  const gap = 26, frH = 120;
+  const topB = H - pad.b - frH - gap;      // долен ръб на горния панел
+  const frTop = topB + gap, frBot = H - pad.b;
+  const frMid = (frTop + frBot) / 2;
+
+  const n = Math.min(series.px.length, series.oi.length);
+  const x = i => pad.l + i*(W-pad.l-pad.r)/(n-1);
+  const scale = arr => { const mn=Math.min(...arr), mx=Math.max(...arr), r=(mx-mn)||1;
+    return v => topB - (v-mn)/r*(topB-pad.t); };
+
+  const yPx = scale(series.px.slice(0,n)), yOi = scale(series.oi.slice(0,n));
+
+  // зони на вероятни каскадни ликвидации — под всичко останало
+  (series.casc||[]).forEach(z=>{
+    const x0 = x(Math.max(0,z.start-1)), x1 = x(Math.min(n-1,z.end));
+    g.fillStyle = (z.dir==='long' ? hot : short) + '2E';
+    g.fillRect(x0, pad.t, Math.max(3, x1-x0), topB-pad.t);
+  });
+  const cn = document.getElementById('casc-n');
+  if(cn) cn.textContent = (series.casc||[]).length ? (series.casc.length+' зони в периода') : 'няма зони в периода';
+
+  // хоризонтални водачи в горния панел
+  g.strokeStyle = rule; g.lineWidth = 1;
+  for(let k=0;k<=3;k++){ const y=pad.t+k*(topB-pad.t)/3;
+    g.beginPath(); g.moveTo(pad.l,y); g.lineTo(W-pad.r,y); g.stroke(); }
+
+  // открит интерес — площ
+  g.beginPath(); g.moveTo(x(0), topB);
+  for(let i=0;i<n;i++) g.lineTo(x(i), yOi(series.oi[i]));
+  g.lineTo(x(n-1), topB); g.closePath();
+  g.fillStyle = long+'26'; g.fill();
+  g.beginPath();
+  for(let i=0;i<n;i++) i?g.lineTo(x(i),yOi(series.oi[i])):g.moveTo(x(i),yOi(series.oi[i]));
+  g.strokeStyle = long; g.lineWidth = 2.5; g.stroke();
+
+  // цена
+  g.beginPath();
+  for(let i=0;i<n;i++) i?g.lineTo(x(i),yPx(series.px[i])):g.moveTo(x(i),yPx(series.px[i]));
+  g.strokeStyle = dim; g.lineWidth = 2; g.stroke();
+
+  // ---- фъндинг: колони от нулевата линия ----
+  const t0 = series.t[0], t1 = series.t[n-1], span = (t1-t0)||1;
+  const bars = (series.fr||[]).filter(f=>f.t>=t0 && f.t<=t1+8*3600e3);
+
+  g.strokeStyle = rule; g.lineWidth = 1;
+  g.beginPath(); g.moveTo(pad.l, frMid); g.lineTo(W-pad.r, frMid); g.stroke();
+
+  if(bars.length){
+    const mx = Math.max(20, ...bars.map(f=>Math.abs(f.v)));
+    const bw = Math.max(4, Math.min(26, (W-pad.l-pad.r)/bars.length*0.55));
+    bars.forEach(f=>{
+      const bx = pad.l + (f.t-t0)/span*(W-pad.l-pad.r);
+      const h = Math.abs(f.v)/mx * ((frBot-frTop)/2 - 4);
+      g.fillStyle = f.v>=0 ? long : short;
+      g.fillRect(bx-bw/2, f.v>=0 ? frMid-h : frMid, bw, Math.max(1.5,h));
+    });
+    g.font = '400 19px '+css.getPropertyValue('--mono');
+    g.fillStyle = dim;
+    g.fillText('±'+mx.toFixed(0)+'%', pad.l, frTop+16);
+  } else {
+    g.font = '400 19px '+css.getPropertyValue('--mono');
+    g.fillStyle = rule;
+    g.fillText('няма данни за фъндинг', pad.l, frMid-8);
+  }
+
+  // етикети по краищата
+  g.font = '400 20px '+css.getPropertyValue('--mono');
+  g.fillStyle = dim;
+  const d0 = new Date(t0), d1 = new Date(t1);
+  const lbl = d => d.getDate()+'.'+(d.getMonth()+1)+' '+String(d.getHours()).padStart(2,'0')+':00';
+  g.fillText(lbl(d0), pad.l, H-8);
+  const txt = lbl(d1); g.fillText(txt, W-pad.r-g.measureText(txt).width, H-8);
+}
+
+/* ---------------- лонг/шорт ---------------- */
+async function loadRatios(){
+  const box = document.getElementById('ratios');
+  const sym = S.sym+'USDT';
+  const sets = [
+    {key:'crowd', q:'globalLongShortAccountRatio', title:'Всички сметки', foot:'Колко сметки държат лонг спрямо шорт — тълпата.'},
+    {key:'top',   q:'topLongShortPositionRatio',   title:'Големите играчи', foot:'Претеглено по размер на позицията при водещите сметки.'},
+  ];
+  const out = {};
+  box.innerHTML='';
+  for(const s of sets){
+    let d;
+    try{ d = await j(`${bn}/futures/data/${s.q}?symbol=${sym}&period=1h&limit=1`); }
+    catch(e){ box.insertAdjacentHTML('beforeend',`<div class="ratio"><div class="head"><span>${s.title}</span><span style="color:var(--hot)">няма достъп</span></div></div>`); continue; }
+    const r = d[0]; if(!r) continue;
+    const l = parseFloat(r.longAccount ?? r.longPosition)*100;
+    const sh = 100-l;
+    out[s.key] = l;
+    box.insertAdjacentHTML('beforeend',
+      `<div class="ratio">
+        <div class="head"><span>${s.title}</span><span>${fmt(l,1)} / ${fmt(sh,1)}</span></div>
+        <div class="split"><span class="l" style="width:${l}%"></span><span class="s" style="width:${sh}%"></span></div>
+        <div class="foot">${s.foot}</div>
+      </div>`);
+  }
+  return out;
+}
+
+/* ---------------- Hyperliquid ---------------- */
+async function loadHL(){
+  const box = document.getElementById('hl-market');
+  try{
+    const [meta,ctx] = await hlInfo({type:'metaAndAssetCtxs'});
+    const i = meta.universe.findIndex(u=>u.name===S.sym);
+    if(i<0){ box.innerHTML = `<div class="empty">Няма пазар за ${S.sym} тук.</div>`; return; }
+    const a = ctx[i], px = parseFloat(a.markPx);
+    const oiUsd = parseFloat(a.openInterest)*px;
+    const f = annual(parseFloat(a.funding),1);
+    box.innerHTML =
+      `<div class="venue"><span class="name">Открит интерес</span>
+        <span style="color:var(--ink-dim);font-size:13px">маркирана цена ${fmt(px, px>100?1:3)}</span>
+        <span class="val">${usd(oiUsd)}</span></div>
+       <div class="venue"><span class="name">Фъндинг</span>
+        <span style="color:var(--ink-dim);font-size:13px">на час, годишно изражение</span>
+        <span class="val" style="color:${f>=0?'var(--long)':'var(--short)'}">${pct(f)}</span></div>`;
+  }catch(e){ box.innerHTML = `<div class="empty">Няма връзка с Hyperliquid.</div>`; }
+}
+
+async function loadAddress(){
+  const addr = document.getElementById('hl-addr').value.trim();
+  const box = document.getElementById('hl-pos');
+  if(!/^0x[a-fA-F0-9]{40}$/.test(addr)){
+    box.innerHTML = '<div class="empty">Адресът трябва да е 0x и 40 знака след него.</div>'; return;
+  }
+  box.innerHTML = '<div class="empty">Проверява…</div>';
+  try{
+    const st = await hlInfo({type:'clearinghouseState', user:addr});
+    const rows = st.assetPositions||[];
+    if(!rows.length){ box.innerHTML='<div class="empty">Този адрес няма отворени позиции.</div>'; return; }
+    box.innerHTML = `<table><thead><tr>
+      <th>Актив</th><th>Размер</th><th>Вход</th><th>Ликвидация</th><th>Резултат</th></tr></thead><tbody>` +
+      rows.map(p=>{
+        const d=p.position, sz=parseFloat(d.szi), pnl=parseFloat(d.unrealizedPnl);
+        return `<tr>
+          <td class="${sz>0?'side-l':'side-s'}">${d.coin} ${sz>0?'лонг':'шорт'}</td>
+          <td>${fmt(Math.abs(sz),3)}</td>
+          <td>${fmt(parseFloat(d.entryPx), 2)}</td>
+          <td>${d.liquidationPx?fmt(parseFloat(d.liquidationPx),2):'—'}</td>
+          <td class="${pnl>=0?'pos':'neg'}">${pnl>=0?'+':''}${usd(pnl)}</td></tr>`;
+      }).join('') + '</tbody></table>';
+  }catch(e){ box.innerHTML = '<div class="empty">Неуспешна заявка към Hyperliquid.</div>'; }
+}
+
+/* ---------------- прочит ---------------- */
+function verdict(sr, avgFunding){
+  const line=document.getElementById('v-line'), why=document.getElementById('v-why'), facts=document.getElementById('v-facts');
+  if(!sr){ line.textContent='Няма данни'; return; }
+  const n=Math.min(sr.px.length,sr.oi.length);
+  const dPx=(sr.px[n-1]/sr.px[0]-1)*100;
+  const dOi=(sr.oi[n-1]/sr.oi[0]-1)*100;
+  const up=dPx>0.4, down=dPx<-0.4, oiUp=dOi>1, oiDown=dOi<-1;
+
+  let head='Няма ясна посока', body='Цената и откритият интерес се движат слабо. В такъв период фъндингът е по-надеждният сигнал.';
+  if(up&&oiUp){ head='Нови лонгове с ливъридж';
+    body='Цената и откритият интерес растат заедно — движението се захранва от нови заемни позиции, не от спот купувачи. Този тип покачване е крехко и обикновено носи каскадни ликвидации при първото връщане.'; }
+  else if(up&&oiDown){ head='Затваряне на шортове';
+    body='Цената расте, докато откритият интерес пада — позиции се закриват, вместо да се откриват нови. По-здраво движение, но горивото свършва, щом шортовете излязат.'; }
+  else if(down&&oiUp){ head='Нови шортове';
+    body='Цената пада с растящ открит интерес — активно се отварят къси позиции. Струпването им е и гориво за рязък отскок.'; }
+  else if(down&&oiDown){ head='Лонгове излизат';
+    body='Цената и откритият интерес падат заедно — принудително или доброволно закриване на дълги позиции. Обикновено сигнал за изчистване на ливъриджа.'; }
+
+  const hot = avgFunding!=null && Math.abs(avgFunding)>25;
+  line.textContent = head;
+  why.textContent = body + (hot ? ` Фъндингът е екстремен (${pct(avgFunding)} годишно) — едната страна плаща скъпо, за да остане на позиция.` : '');
+  document.getElementById('verdict').style.borderLeftColor =
+    up&&oiUp ? 'var(--long)' : down&&oiUp ? 'var(--short)' : hot ? 'var(--hot)' : 'var(--rule)';
+
+  const period = {'1h:24':'24 часа','4h:42':'7 дни','1d:30':'30 дни'}[S.range];
+  facts.innerHTML =
+    `<div><b>${fmt(sr.px[n-1],2)}</b><span>цена</span></div>
+     <div><b class="${dPx>=0?'pos':'neg'}">${pct(dPx)}</b><span>цена за ${period}</span></div>
+     <div><b class="${dOi>=0?'pos':'neg'}">${pct(dOi)}</b><span>открит интерес</span></div>
+     <div><b>${usd(sr.oi[n-1])}</b><span>открит интерес, Binance</span></div>`;
+}
+
+const avgOf = f => (f&&f.length) ? f.reduce((a,b)=>a+b.val,0)/f.length : null;
+
+function analyse(sr, funding, ratios){
+  const box = document.getElementById('analysis'), chip = document.getElementById('a-risk');
+  if(!sr){ box.innerHTML = '<div class="empty">Няма достатъчно данни за обобщение.</div>'; return; }
+
+  const n = Math.min(sr.px.length, sr.oi.length);
+  const dPx = (sr.px[n-1]/sr.px[0]-1)*100, dOi = (sr.oi[n-1]/sr.oi[0]-1)*100;
+  const period = {'1h:24':'последните 24 часа','4h:42':'последната седмица','1d:30':'последния месец'}[S.range];
+  const up=dPx>0.4, down=dPx<-0.4, oiUp=dOi>1, oiDown=dOi<-1;
+
+  const vals = (funding||[]).map(x=>x.val);
+  const avg = avgOf(funding);
+  const spread = vals.length>1 ? Math.max(...vals)-Math.min(...vals) : null;
+  const hi = vals.length ? funding.reduce((a,b)=>b.val>a.val?b:a) : null;
+  const lo = vals.length ? funding.reduce((a,b)=>b.val<a.val?b:a) : null;
+
+  const P = [];
+
+  let p1 = `През ${period} цената на ${S.sym} се е променила с <b>${pct(dPx)}</b>, а откритият интерес с <b>${pct(dOi)}</b>.`;
+  if(up&&oiUp) p1 += ' Двете растат заедно, значи движението се захранва от нови позиции с ливъридж, а не от спот търсене. Позициите, отворени в този диапазон, имат ликвидационни нива непосредствено под текущата цена.';
+  else if(up&&oiDown) p1 += ' Цената расте, докато позиции се закриват — най-вероятно излизане на шортове. Структурата е по-здрава, но и горивото под нея е по-малко.';
+  else if(down&&oiUp) p1 += ' Цената пада с нарастващ открит интерес, тоест активно се отварят къси позиции вместо да се закриват дълги. Струпването им работи и в двете посоки.';
+  else if(down&&oiDown) p1 += ' И двете спадат — ливъриджът се изчиства. Това обикновено е разтоварване след движение, не начало на ново.';
+  else p1 += ' Нито едното не се движи убедително. В такъв режим фъндингът носи повече информация от посоката на цената.';
+  const cz = sr.casc||[];
+  if(cz.length){
+    const big = cz.reduce((a,b)=>Math.abs(b.px)>Math.abs(a.px)?b:a);
+    p1 += ` Има <b>${cz.length}</b> ${cz.length===1?'интервал':'интервала'} с признаци на каскадни ликвидации. `
+        + `Най-силният е с движение ${pct(big.px)} при спад на интереса ${pct(big.oi)} — затваряни са предимно `
+        + `${big.dir==='long'?'дълги':'къси'} позиции.`;
+  } else {
+    p1 += ' В този период няма интервали с признаци на каскадни ликвидации.';
+  }
+  P.push(p1);
+
+  if(avg!=null){
+    let p2 = `Средният фъндинг е <b>${pct(avg)}</b> в годишно изражение`;
+    if(avg>50) p2 += ', което е екстремно. Лонговете плащат сериозна сума само за да задържат позицията си, а такива нива рядко издържат повече от няколко дни.';
+    else if(avg>15) p2 += ' — лонговете са мнозинството и плащат за това, но без да е крайност.';
+    else if(avg<-15) p2 += ' — шортовете плащат на лонговете. Сравнително рядка конфигурация, която често се появява около дъна.';
+    else p2 += ', тоест в нормалния диапазон, без изразено струпване от която и да е страна.';
+    if(spread!=null && spread>20)
+      p2 += ` Разликата между борсите е ${fmt(spread,0)} пункта — най-скъпо при ${hi.name}, най-евтино при ${lo.name}. Такова разминаване обикновено се изравнява от арбитраж.`;
+    P.push(p2);
+  }
+
+  if(ratios && ratios.crowd!=null && ratios.top!=null){
+    const d = ratios.crowd - ratios.top;
+    let p3 = `Тълпата е <b>${fmt(ratios.crowd,0)}%</b> лонг, а големите играчи <b>${fmt(ratios.top,0)}%</b>.`;
+    if(d>10) p3 += ' Дребните сметки са осезаемо по-бичи от капитала — при разминаване втората група исторически е по-надеждната.';
+    else if(d<-10) p3 += ' Капиталът е по-бичи от тълпата. По-рядката комбинация и обикновено по-интересната.';
+    else p3 += ' Двете групи гледат в една посока, така че тук няма сигнал за разминаване.';
+    if(ratios.crowd>75 || ratios.crowd<25) p3 += ' Дребните сметки са в крайност.';
+    P.push(p3);
+  }
+
+  let watch = 'Оттук нататък най-полезното наблюдение е разминаването между цената и открития интерес — то се появява преди по-големите движения по-често от самата посока на цената.';
+  if(oiUp && avg>25) watch = 'Следи открития интерес: рязък спад при слабо движение на цената означава, че позиции са били затворени принудително, а не доброволно.';
+  else if(avg<0 && up) watch = 'Следи дали фъндингът се връща към нулата. Докато е отрицателен при растяща цена, шортовете субсидират движението.';
+  else if(oiDown && down) watch = 'Следи кога откритият интерес спре да пада. Стабилизирането му след изчистване е по-информативно от самото дъно на цената.';
+  P.push(watch);
+
+  let score = 0;
+  if(avg!=null && Math.abs(avg)>30) score++;
+  if(Math.abs(dOi)>8) score++;
+  if(ratios && (ratios.crowd>72 || ratios.crowd<28)) score++;
+  if(ratios && ratios.crowd!=null && ratios.top!=null && Math.abs(ratios.crowd-ratios.top)>12) score++;
+  const lvl = score<=1 ? ['ниско струпване','lo'] : score===2 ? ['средно струпване','mid'] : ['високо струпване','hi'];
+  chip.textContent = lvl[0]; chip.className = lvl[1];
+
+  box.innerHTML = P.map(t=>`<p>${t}</p>`).join('');
+}
+
+/* ---------------- оркестрация ---------------- */
+async function refresh(){
+  document.body.classList.add('loading');
+  document.getElementById('stamp').textContent = 'зарежда…';
+  const [f, sr, rt] = await Promise.all([
+    loadFunding().catch(()=>null),
+    loadSeries().catch(()=>null),
+    loadRatios().catch(()=>null),
+    loadHL().catch(()=>null),
+  ]);
+  S.funding = f; S.ratios = rt;
+  verdict(sr, avgOf(f));
+  analyse(sr, f, rt);
+  const d = new Date();
+  document.getElementById('stamp').textContent =
+    String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+  document.body.classList.remove('loading');
+}
+
+document.getElementById('symbols').addEventListener('click', e=>{
+  const b = e.target.closest('button[data-sym]'); if(!b) return;
+  S.sym = b.dataset.sym;
+  document.querySelectorAll('#symbols button[data-sym]').forEach(x=>x.setAttribute('aria-pressed', x===b));
+  refresh();
+});
+document.getElementById('ranges').addEventListener('click', e=>{
+  const b = e.target.closest('button[data-range]'); if(!b) return;
+  S.range = b.dataset.range;
+  document.querySelectorAll('#ranges button').forEach(x=>x.setAttribute('aria-pressed', x===b));
+  loadSeries().then(sr=>{ verdict(sr, avgOf(S.funding)); analyse(sr, S.funding, S.ratios); }).catch(()=>{});
+});
+document.getElementById('reload').addEventListener('click', refresh);
+document.getElementById('hl-go').addEventListener('click', loadAddress);
+document.getElementById('hl-addr').addEventListener('keydown', e=>{ if(e.key==='Enter') loadAddress(); });
+window.addEventListener('resize', drawChart);
+
+refresh();
+setInterval(refresh, 60000);
+</script>
+</body>
+</html>
