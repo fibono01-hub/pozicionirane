@@ -75,6 +75,40 @@ h2 em{font-style:normal;color:var(--ink)}
 
 /* ---- chart ---- */
 canvas{width:100%;height:290px;display:block}
+#flow{height:250px}
+.stats{display:flex;gap:18px;flex-wrap:wrap;margin-bottom:12px;font-family:var(--mono);font-size:13px}
+.stats b{font-weight:500;display:block}
+.stats span{color:var(--ink-dim);font-size:11px;font-family:var(--sans)}
+.tabs{display:flex;gap:4px;margin-bottom:18px;border-bottom:1px solid var(--rule)}
+.tabs button{background:none;border:0;border-bottom:2px solid transparent;color:var(--ink-dim);
+  padding:9px 14px;font:inherit;font-size:15px;cursor:pointer;margin-bottom:-1px}
+.tabs button[aria-pressed="true"]{color:var(--ink);border-bottom-color:var(--ink)}
+#pchart{height:340px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.chips button{background:transparent;border:1px solid var(--rule);color:var(--ink-dim);
+  padding:6px 11px;border-radius:2px;font:inherit;font-size:13px;font-family:var(--mono);cursor:pointer;
+  display:inline-flex;align-items:center;gap:7px}
+.chips button[aria-pressed="true"]{color:var(--ink);border-color:currentColor}
+.chips button i{width:9px;height:9px;border-radius:2px;display:inline-block;opacity:.35}
+.chips button[aria-pressed="true"] i{opacity:1}
+.chips .rm{color:var(--ink-dim);font-size:15px;line-height:1;padding-left:2px}
+.addma{display:flex;gap:6px;margin-bottom:20px}
+.addma select,.addma input{background:var(--panel);border:1px solid var(--rule);color:var(--ink);
+  padding:8px 10px;border-radius:2px;font:inherit;font-size:14px}
+.addma input{width:110px;font-family:var(--mono)}
+.addma button{background:var(--ink);color:var(--ground);border:0;padding:8px 15px;border-radius:2px;font:inherit;font-weight:500;cursor:pointer}
+#ma-read .venue{grid-template-columns:96px 1fr 92px}
+#zchart{height:190px}
+.ind{margin-bottom:20px}
+.ind .head{display:flex;justify-content:space-between;align-items:baseline;font-size:14px;margin-bottom:7px}
+.ind .head b{font-family:var(--mono);font-weight:500;font-size:15px}
+.gauge{position:relative;height:8px;border-radius:1px;display:flex;overflow:hidden}
+.gauge span.z{display:block;height:100%}
+.mark{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--ink);border-radius:1px}
+.ind .foot{font-size:12px;color:var(--ink-dim);margin-top:7px;max-width:58ch;line-height:1.55}
+.ind.na .foot{color:var(--hot)}
+#ind-help p{font-size:13px;color:var(--ink-dim);line-height:1.6;margin-bottom:10px;max-width:60ch}
+#ind-help b{color:var(--ink);font-weight:500}
 .legend{display:flex;gap:16px;font-size:12px;color:var(--ink-dim);margin-top:8px}
 .legend i{display:inline-block;width:14px;height:2px;vertical-align:middle;margin-right:5px}
 
@@ -120,6 +154,12 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
   <span id="stamp">зарежда…</span>
 </header>
 
+<div class="tabs" id="tabs">
+  <button data-tab="pos" aria-pressed="true">Позициониране</button>
+  <button data-tab="price" aria-pressed="false">Цена</button>
+  <button data-tab="ind" aria-pressed="false">Индикатори</button>
+</div>
+
 <div class="controls" id="symbols">
   <button data-sym="ETH" aria-pressed="true">ETH</button>
   <button data-sym="BTC" aria-pressed="false">BTC</button>
@@ -128,6 +168,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
   <button id="reload">Обнови</button>
 </div>
 
+<div id="tab-pos">
 <div id="verdict">
   <div class="line" id="v-line">Изчаква данни</div>
   <div class="why" id="v-why"></div>
@@ -160,6 +201,20 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
 </section>
 
 <section>
+  <h2>Спот поток — <em>реални покупки срещу деривати</em></h2>
+  <div id="flow-stats" class="stats"></div>
+  <canvas id="flow" width="1400" height="480"></canvas>
+  <div class="legend">
+    <span><i style="background:var(--ink-dim)"></i>Цена</span>
+    <span><i style="background:var(--ink)"></i>Кумулативна делта</span>
+  </div>
+  <div class="legend">
+    <span><i style="background:var(--long);height:9px"></i>Обем с превес купувачи</span>
+    <span><i style="background:var(--short);height:9px"></i>Обем с превес продавачи</span>
+  </div>
+</section>
+
+<section>
   <h2>Съотношение лонг / шорт</h2>
   <div id="ratios"></div>
 </section>
@@ -178,6 +233,59 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
   <h2>Обобщение — <em id="a-risk">изчаква</em></h2>
   <div id="analysis"><div class="empty">Изчаква данни от всички източници.</div></div>
 </section>
+</div>
+
+<div id="tab-price" hidden>
+  <div class="controls" id="p-int">
+    <button data-int="1d" aria-pressed="false">Дневно</button>
+    <button data-int="1w" aria-pressed="true">Седмично</button>
+    <button data-int="4h" aria-pressed="false">4 часа</button>
+    <button id="p-log" aria-pressed="true">Лог</button>
+  </div>
+  <canvas id="pchart" width="1400" height="640"></canvas>
+  <div class="controls" id="p-view" style="margin-top:12px">
+    <button data-view="60" aria-pressed="false">Близък</button>
+    <button data-view="160" aria-pressed="true">Среден</button>
+    <button data-view="400" aria-pressed="false">Далечен</button>
+  </div>
+
+  <h2 style="margin-top:26px">Плъзгащи средни</h2>
+  <div class="chips" id="ma-chips"></div>
+  <div class="addma">
+    <select id="ma-type"><option value="sma">SMA</option><option value="ema">EMA</option></select>
+    <input id="ma-len" type="number" inputmode="numeric" min="2" max="400" placeholder="период">
+    <button id="ma-add">Добави</button>
+  </div>
+  <div id="ma-read"></div>
+</div>
+
+<div id="tab-ind" hidden>
+  <div class="controls" id="i-int">
+    <button data-iint="1d" aria-pressed="true">Дневно</button>
+    <button data-iint="1w" aria-pressed="false">Седмично</button>
+  </div>
+
+  <section>
+    <h2>Инерция и разтегнатост</h2>
+    <div id="ind-tech"></div>
+  </section>
+
+  <section>
+    <h2>Оценка на веригата — <em>MVRV</em></h2>
+    <div id="ind-chain"></div>
+    <canvas id="zchart" width="1400" height="380"></canvas>
+    <div class="legend">
+      <span><i style="background:var(--ink)"></i>MVRV Z-score</span>
+      <span><i style="background:var(--short);height:9px"></i>под нулата</span>
+      <span><i style="background:var(--hot);height:9px"></i>над 5</span>
+    </div>
+  </section>
+
+  <section>
+    <h2>Какво значат</h2>
+    <div id="ind-help"></div>
+  </section>
+</div>
 
 <footer>
   Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
@@ -284,6 +392,7 @@ async function loadSeries(){
     t: oi.map(d=>d.timestamp),
     oi: oi.map(d=>parseFloat(d.sumOpenInterestValue)),
     px: kl.map(k=>parseFloat(k[4])),
+    pv: kl.map(k=>parseFloat(k[7])),
     fr: fr.map(d=>({t:d.fundingTime, v:annual(parseFloat(d.fundingRate),8)}))
   };
   series.casc = findCascades(series.px, series.oi);
@@ -407,6 +516,84 @@ function drawChart(){
   const txt = lbl(d1); g.fillText(txt, W-pad.r-g.measureText(txt).width, H-8);
 }
 
+/* ---------------- спот поток ---------------- */
+const spotBase = 'https://api.binance.com';
+let spot = null;
+
+async function loadSpot(){
+  const [period,limit] = S.range.split(':');
+  const kl = await j(`${spotBase}/api/v3/klines?symbol=${S.sym}USDT&interval=${period}&limit=${limit}`);
+  const qv = kl.map(k=>parseFloat(k[7]));    // оборот в USDT
+  const tb = kl.map(k=>parseFloat(k[10]));   // от него агресивни покупки
+  const cvd = []; let acc = 0;
+  qv.forEach((v,i)=>{ acc += 2*tb[i]-v; cvd.push(acc); });
+  spot = { t: kl.map(k=>k[0]), px: kl.map(k=>parseFloat(k[4])), qv, tb, cvd };
+  return spot;
+}
+
+function drawFlow(){
+  const c = document.getElementById('flow'), g = c.getContext('2d');
+  const W=c.width, H=c.height, pad={l:8,r:8,t:14,b:14};
+  g.clearRect(0,0,W,H);
+  const st = document.getElementById('flow-stats');
+  if(!spot || spot.qv.length<3){ st.innerHTML='<span>Няма спот данни.</span>'; return; }
+
+  const css = getComputedStyle(document.documentElement);
+  const dim=css.getPropertyValue('--ink-dim').trim(), rule=css.getPropertyValue('--rule').trim();
+  const ink=css.getPropertyValue('--ink').trim();
+  const long=css.getPropertyValue('--long').trim(), short=css.getPropertyValue('--short').trim();
+
+  const n = spot.qv.length;
+  const volH = 110, gap = 20;
+  const topB = H - pad.b - volH - gap;
+  const x = i => pad.l + i*(W-pad.l-pad.r)/(n-1);
+  const scale = arr => { const mn=Math.min(...arr), mx=Math.max(...arr), r=(mx-mn)||1;
+    return v => topB - (v-mn)/r*(topB-pad.t); };
+  const yPx = scale(spot.px), yCv = scale(spot.cvd);
+
+  g.strokeStyle = rule; g.lineWidth = 1;
+  for(let k=0;k<=2;k++){ const y=pad.t+k*(topB-pad.t)/2;
+    g.beginPath(); g.moveTo(pad.l,y); g.lineTo(W-pad.r,y); g.stroke(); }
+
+  // цена
+  g.beginPath();
+  for(let i=0;i<n;i++) i?g.lineTo(x(i),yPx(spot.px[i])):g.moveTo(x(i),yPx(spot.px[i]));
+  g.strokeStyle = dim; g.lineWidth = 2; g.stroke();
+
+  // кумулативна делта
+  g.beginPath();
+  for(let i=0;i<n;i++) i?g.lineTo(x(i),yCv(spot.cvd[i])):g.moveTo(x(i),yCv(spot.cvd[i]));
+  g.strokeStyle = ink; g.lineWidth = 2.5; g.stroke();
+
+  // колони с оборот, оцветени по превес
+  const mxV = Math.max(...spot.qv) || 1;
+  const bw = Math.max(2, (W-pad.l-pad.r)/n*0.7);
+  for(let i=0;i<n;i++){
+    const share = spot.tb[i]/(spot.qv[i]||1);
+    const h = spot.qv[i]/mxV*volH;
+    g.fillStyle = share>=0.5 ? long : short;
+    g.globalAlpha = 0.35 + Math.abs(share-0.5)*1.6;
+    g.fillRect(x(i)-bw/2, H-pad.b-h, bw, Math.max(1,h));
+  }
+  g.globalAlpha = 1;
+
+  // числа над графиката
+  const sumQ = spot.qv.reduce((a,b)=>a+b,0), sumT = spot.tb.reduce((a,b)=>a+b,0);
+  const taker = sumT/sumQ*100;
+  const mean = sumQ/n, recent = spot.qv.slice(-3).reduce((a,b)=>a+b,0)/Math.min(3,n);
+  const volRel = (recent/mean-1)*100;
+  let sp = null;
+  if(series && series.pv && series.pv.length){
+    const perp = series.pv.reduce((a,b)=>a+b,0);
+    if(perp>0) sp = sumQ/perp;
+  }
+  st.innerHTML =
+    `<div><b>${usd(sumQ)}</b><span>спот оборот за периода</span></div>
+     <div><b class="${taker>=50?'pos':'neg'}">${fmt(taker,1)}%</b><span>агресивни покупки</span></div>
+     <div><b class="${volRel>=0?'pos':'neg'}">${pct(volRel)}</b><span>обем спрямо средното</span></div>` +
+    (sp!=null ? `<div><b>${fmt(sp,2)}</b><span>спот към перп оборот</span></div>` : '');
+}
+
 /* ---------------- лонг/шорт ---------------- */
 async function loadRatios(){
   const box = document.getElementById('ratios');
@@ -515,7 +702,7 @@ function verdict(sr, avgFunding){
 
 const avgOf = f => (f&&f.length) ? f.reduce((a,b)=>a+b.val,0)/f.length : null;
 
-function analyse(sr, funding, ratios){
+function analyse(sr, funding, ratios, sp){
   const box = document.getElementById('analysis'), chip = document.getElementById('a-risk');
   if(!sr){ box.innerHTML = '<div class="empty">Няма достатъчно данни за обобщение.</div>'; return; }
 
@@ -570,6 +757,25 @@ function analyse(sr, funding, ratios){
     P.push(p3);
   }
 
+  if(sp && sp.qv.length>3){
+    const m = sp.qv.length;
+    const sumQ = sp.qv.reduce((a,b)=>a+b,0), sumT = sp.tb.reduce((a,b)=>a+b,0);
+    const taker = sumT/sumQ*100;
+    const cvdUp = sp.cvd[m-1] > sp.cvd[Math.floor(m*0.5)];
+    let p4 = `Спот оборотът за периода е ${usd(sumQ)}, от който <b>${fmt(taker,1)}%</b> са агресивни покупки.`;
+    if(up && cvdUp && taker>51)
+      p4 += ' Кумулативната делта расте заедно с цената — движението е подкрепено от реални спот покупки, не само от ливъридж. Това е по-здравата от двете конфигурации.';
+    else if(up && !cvdUp)
+      p4 += ' Цената расте, но кумулативната делта не следва. Такова разминаване значи, че покачването се крепи на деривати, а спот купувачите не участват.';
+    else if(down && !cvdUp && taker<49)
+      p4 += ' Продавачите доминират и в спот, тоест спадът не е само въпрос на затваряне на позиции с ливъридж.';
+    else if(down && cvdUp)
+      p4 += ' Цената пада, но спот делтата расте — някой поглъща предлагането на по-ниски нива.';
+    else
+      p4 += ' Потокът е балансиран и не сочи ясен превес на едната страна.';
+    P.push(p4);
+  }
+
   let watch = 'Оттук нататък най-полезното наблюдение е разминаването между цената и открития интерес — то се появява преди по-големите движения по-често от самата посока на цената.';
   if(oiUp && avg>25) watch = 'Следи открития интерес: рязък спад при слабо движение на цената означава, че позиции са били затворени принудително, а не доброволно.';
   else if(avg<0 && up) watch = 'Следи дали фъндингът се връща към нулата. Докато е отрицателен при растяща цена, шортовете субсидират движението.';
@@ -587,19 +793,367 @@ function analyse(sr, funding, ratios){
   box.innerHTML = P.map(t=>`<p>${t}</p>`).join('');
 }
 
+/* ---------------- ценова графика с плъзгащи средни ---------------- */
+const MA_COLORS = ['#E0A03C','#3FB6A6','#7C8CF8','#E4685B','#B98BE0','#5FBF7A','#D9C05A','#6FA8D6'];
+const UNIT = {'1d':'д','1w':'с','4h':'4ч'};
+let price = null;
+
+Object.assign(S, { tab:'pos', pInt:'1w', pView:160, pLog:true, mas:[
+  {t:'sma', n:20,  on:true},
+  {t:'sma', n:50,  on:true},
+  {t:'sma', n:200, on:true},
+  {t:'ema', n:21,  on:false},
+]});
+
+const sma = (a,n) => a.map((_,i)=> i<n-1 ? null : a.slice(i-n+1,i+1).reduce((x,y)=>x+y,0)/n);
+function ema(a,n){
+  const k = 2/(n+1), out = new Array(a.length).fill(null);
+  if(a.length<n) return out;
+  let prev = a.slice(0,n).reduce((x,y)=>x+y,0)/n;
+  out[n-1] = prev;
+  for(let i=n;i<a.length;i++){ prev = a[i]*k + prev*(1-k); out[i] = prev; }
+  return out;
+}
+
+async function loadPrice(){
+  const need = S.pView + Math.max(200, ...S.mas.map(m=>m.n)) + 5;
+  const limit = Math.min(1000, need);
+  const kl = await j(`${spotBase}/api/v3/klines?symbol=${S.sym}USDT&interval=${S.pInt}&limit=${limit}`);
+  price = { t: kl.map(k=>k[0]), c: kl.map(k=>parseFloat(k[4])) };
+  drawPrice();
+  return price;
+}
+
+function drawPrice(){
+  const c = document.getElementById('pchart'), g = c.getContext('2d');
+  const W=c.width, H=c.height, pad={l:8,r:96,t:16,b:30};
+  g.clearRect(0,0,W,H);
+  const read = document.getElementById('ma-read');
+  if(!price || price.c.length<3){ read.innerHTML='<div class="empty">Няма ценови данни.</div>'; return; }
+
+  const css = getComputedStyle(document.documentElement);
+  const dim=css.getPropertyValue('--ink-dim').trim(), rule=css.getPropertyValue('--rule').trim();
+  const ink=css.getPropertyValue('--ink').trim();
+
+  const total = price.c.length;
+  const from = Math.max(0, total - S.pView);
+  const vis = price.c.slice(from);
+  const n = vis.length;
+
+  const lines = S.mas.filter(m=>m.on).map((m,idx)=>({
+    ...m,
+    color: MA_COLORS[S.mas.indexOf(m) % MA_COLORS.length],
+    vals: (m.t==='sma'?sma:ema)(price.c, m.n).slice(from)
+  }));
+
+  const pool = vis.concat(...lines.map(l=>l.vals.filter(v=>v!=null)));
+  const tr = S.pLog ? Math.log : (v=>v);
+  let mn=Math.min(...pool), mx=Math.max(...pool);
+  const padv = (tr(mx)-tr(mn))*0.06 || 1;
+  const lo = tr(mn)-padv, hi = tr(mx)+padv;
+  const x = i => pad.l + i*(W-pad.l-pad.r)/(n-1);
+  const y = v => pad.t + (hi-tr(v))/(hi-lo)*(H-pad.t-pad.b);
+
+  // ценова скала вдясно
+  g.strokeStyle = rule; g.lineWidth = 1;
+  g.font = '400 20px '+css.getPropertyValue('--mono');
+  for(let k=0;k<=4;k++){
+    const yy = pad.t + k*(H-pad.t-pad.b)/4;
+    g.beginPath(); g.moveTo(pad.l,yy); g.lineTo(W-pad.r,yy); g.stroke();
+    const v = S.pLog ? Math.exp(hi-(yy-pad.t)/(H-pad.t-pad.b)*(hi-lo))
+                     : hi-(yy-pad.t)/(H-pad.t-pad.b)*(hi-lo);
+    g.fillStyle = dim;
+    g.fillText(v>=1000 ? (v/1000).toFixed(1)+'K' : v.toFixed(v<10?3:1), W-pad.r+10, yy+7);
+  }
+
+  // плъзгащи средни
+  lines.forEach(l=>{
+    g.beginPath(); let started=false;
+    for(let i=0;i<n;i++){
+      const v=l.vals[i]; if(v==null) continue;
+      started ? g.lineTo(x(i),y(v)) : (g.moveTo(x(i),y(v)), started=true);
+    }
+    g.strokeStyle = l.color; g.lineWidth = 2; g.stroke();
+  });
+
+  // цена
+  g.beginPath();
+  for(let i=0;i<n;i++) i?g.lineTo(x(i),y(vis[i])):g.moveTo(x(i),y(vis[i]));
+  g.strokeStyle = ink; g.lineWidth = 2.5; g.stroke();
+
+  // дати
+  g.fillStyle = dim;
+  const fd = ms => { const d=new Date(ms);
+    return S.pInt==='4h' ? d.getDate()+'.'+(d.getMonth()+1)
+                         : (d.getMonth()+1)+'.'+String(d.getFullYear()).slice(2); };
+  g.fillText(fd(price.t[from]), pad.l, H-8);
+  const tx = fd(price.t[total-1]);
+  g.fillText(tx, W-pad.r-g.measureText(tx).width, H-8);
+
+  // отчитане: къде стои цената спрямо всяка средна
+  const last = vis[n-1];
+  read.innerHTML = lines.length ? lines.map(l=>{
+    const v = l.vals[n-1];
+    if(v==null) return `<div class="venue"><span class="name" style="color:${l.color}">${l.t.toUpperCase()} ${l.n}${UNIT[S.pInt]}</span>
+      <span style="color:var(--ink-dim);font-size:13px">няма достатъчно история</span><span class="val">—</span></div>`;
+    const d = (last/v-1)*100;
+    return `<div class="venue"><span class="name" style="color:${l.color}">${l.t.toUpperCase()} ${l.n}${UNIT[S.pInt]}</span>
+      <span style="color:var(--ink-dim);font-size:13px">цената е ${d>=0?'над':'под'} нея</span>
+      <span class="val ${d>=0?'pos':'neg'}">${pct(d)}</span></div>`;
+  }).join('') : '<div class="empty">Няма избрани средни.</div>';
+}
+
+function renderChips(){
+  const box = document.getElementById('ma-chips');
+  box.innerHTML = S.mas.map((m,i)=>
+    `<button data-ma="${i}" aria-pressed="${m.on}">
+       <i style="background:${MA_COLORS[i%MA_COLORS.length]}"></i>${m.t.toUpperCase()} ${m.n}${UNIT[S.pInt]}
+       <span class="rm" data-rm="${i}">×</span></button>`).join('');
+}
+
+document.getElementById('tabs').addEventListener('click', e=>{
+  const b = e.target.closest('button[data-tab]'); if(!b) return;
+  S.tab = b.dataset.tab;
+  document.querySelectorAll('#tabs button').forEach(x=>x.setAttribute('aria-pressed', x===b));
+  document.getElementById('tab-pos').hidden   = S.tab!=='pos';
+  document.getElementById('tab-price').hidden = S.tab!=='price';
+  document.getElementById('tab-ind').hidden   = S.tab!=='ind';
+  if(S.tab==='price'){ renderChips(); loadPrice().catch(()=>{}); }
+  if(S.tab==='ind') loadInd();
+});
+document.getElementById('p-int').addEventListener('click', e=>{
+  const b = e.target.closest('button[data-int]');
+  if(b){
+    S.pInt = b.dataset.int;
+    document.querySelectorAll('#p-int button[data-int]').forEach(x=>x.setAttribute('aria-pressed', x===b));
+    renderChips(); loadPrice().catch(()=>{}); return;
+  }
+  if(e.target.id==='p-log'){
+    S.pLog = !S.pLog;
+    e.target.setAttribute('aria-pressed', S.pLog);
+    drawPrice();
+  }
+});
+document.getElementById('p-view').addEventListener('click', e=>{
+  const b = e.target.closest('button[data-view]'); if(!b) return;
+  S.pView = +b.dataset.view;
+  document.querySelectorAll('#p-view button').forEach(x=>x.setAttribute('aria-pressed', x===b));
+  loadPrice().catch(()=>drawPrice());
+});
+document.getElementById('ma-chips').addEventListener('click', e=>{
+  const rm = e.target.closest('[data-rm]');
+  if(rm){ S.mas.splice(+rm.dataset.rm,1); renderChips(); drawPrice(); return; }
+  const b = e.target.closest('button[data-ma]'); if(!b) return;
+  const m = S.mas[+b.dataset.ma]; m.on = !m.on;
+  b.setAttribute('aria-pressed', m.on); drawPrice();
+});
+document.getElementById('ma-add').addEventListener('click', ()=>{
+  const t = document.getElementById('ma-type').value;
+  const el = document.getElementById('ma-len');
+  const n = parseInt(el.value,10);
+  if(!n || n<2 || n>400) return;
+  if(!S.mas.some(m=>m.t===t && m.n===n)) S.mas.push({t, n, on:true});
+  el.value=''; el.blur();
+  renderChips(); loadPrice().catch(()=>drawPrice());
+});
+
+/* ---------------- индикатори ---------------- */
+const CM = 'https://community-api.coinmetrics.io/v4';
+const CM_ASSET = { BTC:'btc', ETH:'eth', SOL:'sol' };
+let chain = null;
+S.iInt = '1d';
+
+function rsi(vals, n=14){
+  if(vals.length < n+1) return null;
+  let g=0, l=0;
+  for(let i=1;i<=n;i++){ const d=vals[i]-vals[i-1]; d>=0 ? g+=d : l-=d; }
+  g/=n; l/=n;
+  for(let i=n+1;i<vals.length;i++){
+    const d=vals[i]-vals[i-1];
+    g = (g*(n-1) + (d>0?d:0))/n;
+    l = (l*(n-1) + (d<0?-d:0))/n;
+  }
+  return l===0 ? 100 : 100 - 100/(1+g/l);
+}
+const stdev = a => { const m=a.reduce((x,y)=>x+y,0)/a.length;
+  return Math.sqrt(a.reduce((s,v)=>s+(v-m)**2,0)/a.length); };
+
+function gauge(name, val, unit, min, max, zones, note, na){
+  if(na || val==null || !isFinite(val))
+    return `<div class="ind na"><div class="head"><span>${name}</span><b>—</b></div>
+            <div class="foot">${na||'Няма данни.'}</div></div>`;
+  const pos = Math.max(0, Math.min(100, (val-min)/(max-min)*100));
+  const bars = zones.map(z=>`<span class="z" style="flex:${z.w};background:${z.c}"></span>`).join('');
+  return `<div class="ind">
+    <div class="head"><span>${name}</span><b>${fmt(val, unit==='%'?1:2)}${unit}</b></div>
+    <div class="gauge">${bars}<span class="mark" style="left:calc(${pos}% - 1px)"></span></div>
+    <div class="foot">${note}</div></div>`;
+}
+
+async function loadChain(){
+  const a = CM_ASSET[S.sym];
+  if(!a){ chain=null; return null; }
+  const u = `${CM}/timeseries/asset-metrics?assets=${a}&metrics=CapMrktCurUSD,CapRealUSD`
+          + `&frequency=1d&page_size=10000`;
+  const r = await j(u);
+  const rows = (r.data||[]).filter(d=>d.CapMrktCurUSD && d.CapRealUSD);
+  if(!rows.length){ chain=null; return null; }
+  const mc = rows.map(d=>parseFloat(d.CapMrktCurUSD));
+  const rc = rows.map(d=>parseFloat(d.CapRealUSD));
+  const sd = stdev(mc) || 1;
+  chain = {
+    t: rows.map(d=>new Date(d.time).getTime()),
+    mvrv: mc.map((v,i)=>v/rc[i]),
+    z: mc.map((v,i)=>(v-rc[i])/sd)
+  };
+  return chain;
+}
+
+function drawZ(){
+  const c = document.getElementById('zchart'), g = c.getContext('2d');
+  const W=c.width, H=c.height, pad={l:8,r:64,t:12,b:26};
+  g.clearRect(0,0,W,H);
+  if(!chain || chain.z.length<10) return;
+  const css = getComputedStyle(document.documentElement);
+  const dim=css.getPropertyValue('--ink-dim').trim(), rule=css.getPropertyValue('--rule').trim();
+  const ink=css.getPropertyValue('--ink').trim();
+  const hot=css.getPropertyValue('--hot').trim(), short=css.getPropertyValue('--short').trim();
+
+  const v = chain.z, n = v.length;
+  const mn = Math.min(0, ...v)-0.5, mx = Math.max(...v)+0.5;
+  const x = i => pad.l + i*(W-pad.l-pad.r)/(n-1);
+  const y = q => pad.t + (mx-q)/(mx-mn)*(H-pad.t-pad.b);
+
+  // зони
+  g.fillStyle = hot+'22';  g.fillRect(pad.l, y(mx), W-pad.l-pad.r, y(5)-y(mx));
+  g.fillStyle = short+'22';g.fillRect(pad.l, y(0), W-pad.l-pad.r, y(mn)-y(0));
+  g.strokeStyle = rule; g.lineWidth=1;
+  [0,5].forEach(q=>{ g.beginPath(); g.moveTo(pad.l,y(q)); g.lineTo(W-pad.r,y(q)); g.stroke(); });
+  g.font = '400 19px '+css.getPropertyValue('--mono'); g.fillStyle = dim;
+  [0,5].forEach(q=>g.fillText(q, W-pad.r+10, y(q)+7));
+
+  g.beginPath();
+  for(let i=0;i<n;i++) i?g.lineTo(x(i),y(v[i])):g.moveTo(x(i),y(v[i]));
+  g.strokeStyle = ink; g.lineWidth=2; g.stroke();
+
+  g.fillStyle = dim;
+  const yr = ms => new Date(ms).getFullYear();
+  g.fillText(yr(chain.t[0]), pad.l, H-6);
+  const tx = String(yr(chain.t[n-1]));
+  g.fillText(tx, W-pad.r-g.measureText(tx).width, H-6);
+}
+
+async function loadInd(){
+  const tech = document.getElementById('ind-tech'), ch = document.getElementById('ind-chain');
+  tech.innerHTML = '<div class="empty">Изчислява…</div>';
+
+  const css = getComputedStyle(document.documentElement);
+  const T = css.getPropertyValue('--short').trim(), N = css.getPropertyValue('--rule').trim(),
+        A = css.getPropertyValue('--long').trim(),  R = css.getPropertyValue('--hot').trim();
+
+  // ---- технически, от спот свещите ----
+  try{
+    const [d, w] = await Promise.all([
+      j(`${spotBase}/api/v3/klines?symbol=${S.sym}USDT&interval=1d&limit=400`),
+      j(`${spotBase}/api/v3/klines?symbol=${S.sym}USDT&interval=1w&limit=300`)
+    ]);
+    const kl = S.iInt==='1w' ? w : d;
+    const cl = kl.map(k=>parseFloat(k[4]));
+    const last = cl[cl.length-1];
+    const unit = S.iInt==='1w' ? 'седмици' : 'дни';
+
+    const r = rsi(cl, 14);
+    const dc = d.map(k=>parseFloat(k[4]));
+    const wc = w.map(k=>parseFloat(k[4]));
+    const sma200d = dc.length>=200 ? dc.slice(-200).reduce((a,b)=>a+b,0)/200 : null;
+    const sma200w = wc.length>=200 ? wc.slice(-200).reduce((a,b)=>a+b,0)/200 : null;
+    const mayer = sma200d ? dc[dc.length-1]/sma200d : null;
+    const m200w = sma200w ? wc[wc.length-1]/sma200w : null;
+
+    const rets = [];
+    for(let i=dc.length-31;i<dc.length-1;i++) if(i>0) rets.push(Math.log(dc[i+1]/dc[i]));
+    const vol = rets.length ? stdev(rets)*Math.sqrt(365)*100 : null;
+
+    tech.innerHTML =
+      gauge(`RSI 14 (${unit})`, r, '', 0, 100,
+        [{w:30,c:T},{w:40,c:N},{w:30,c:R}],
+        r==null ? '' : r>70 ? 'Над 70 — инерцията е силна, но разтегната. Исторически повече значи продължение, отколкото обрат, ако цената е над дългите средни.'
+                : r<30 ? 'Под 30 — изчерпване на продавачите. Само по себе си не е сигнал за вход.'
+                : 'В неутралната зона, без крайност в инерцията.') +
+      gauge('Mayer Multiple', mayer, '', 0.4, 3,
+        [{w:16,c:T},{w:64,c:N},{w:20,c:R}],
+        mayer==null ? '' : mayer>2.4 ? 'Над 2.4 — цената е далеч над 200-дневната. Исторически рядка и краткотрайна зона.'
+                : mayer<0.8 ? 'Под 0.8 — цената е значително под 200-дневната. Такива нива са били около циклични дъна.'
+                : 'В обичайния диапазон спрямо 200-дневната средна.',
+        mayer==null ? 'Няма 200 дни история за този актив.' : null) +
+      gauge('Спрямо 200-седмичната', m200w, 'x', 0.5, 8,
+        [{w:8,c:T},{w:52,c:N},{w:40,c:R}],
+        m200w==null ? '' : m200w<1 ? 'Под 200-седмичната. При биткойн това се е случвало само в най-дълбоките мечи фази.'
+                : m200w>5 ? 'Над пет пъти 200-седмичната — зона, характерна за късни етапи на цикъл.'
+                : 'В обичайния диапазон над дългосрочната средна.',
+        m200w==null ? 'Няма 200 седмици история за този актив.' : null) +
+      gauge('Волатилност 30д', vol, '%', 0, 150,
+        [{w:100,c:N}],
+        vol==null ? '' : 'Реализирана волатилност в годишно изражение. Ниските стойности предхождат разширения на диапазона, високите обикновено идват след тях.');
+  }catch(e){
+    tech.innerHTML = '<div class="empty">Няма достъп до ценовите данни.</div>';
+  }
+
+  // ---- MVRV от Coin Metrics ----
+  ch.innerHTML = '<div class="empty">Изчислява…</div>';
+  try{
+    const c2 = await loadChain();
+    if(!c2){
+      ch.innerHTML = `<div class="ind na"><div class="head"><span>MVRV</span><b>—</b></div>
+        <div class="foot">Coin Metrics няма покритие за ${S.sym}. Налично е за BTC, ETH и SOL.</div></div>`;
+      drawZ(); return;
+    }
+    const z = c2.z[c2.z.length-1], m = c2.mvrv[c2.mvrv.length-1];
+    ch.innerHTML =
+      gauge('MVRV Z-score', z, '', -1, 10,
+        [{w:9,c:T},{w:46,c:N},{w:45,c:R}],
+        z<0 ? 'Под нулата — пазарната капитализация е под реализираната, тоест средната монета е на загуба. Историческа зона на дъна.'
+            : z>5 ? 'Над 5 — печалбата на хартия е голяма спрямо историческата волатилност. Зона, в която обикновено се случва разпределяне.'
+            : 'В средния диапазон, без крайност в оценката.') +
+      gauge('MVRV съотношение', m, 'x', 0.5, 4,
+        [{w:14,c:T},{w:57,c:N},{w:29,c:R}],
+        m<1 ? 'Под 1 — средната монета се държи на загуба.'
+            : m>3 ? 'Над 3 — средната монета е на значителна печалба, което увеличава мотива за продаване.'
+            : 'Средната монета е на умерена печалба.');
+    drawZ();
+  }catch(e){
+    ch.innerHTML = '<div class="empty">Няма връзка с Coin Metrics.</div>';
+  }
+}
+
+document.getElementById('ind-help').innerHTML = `
+  <p><b>MVRV Z-score</b> сравнява пазарната капитализация с реализираната — сборът от цената, на която всяка монета е местена последно, тоест средната цена на придобиване. Разликата се дели на стандартното отклонение на пазарната капитализация. Показва колко голяма е печалбата на хартия спрямо историческата норма.</p>
+  <p><b>Mayer Multiple</b> е цената, разделена на 200-дневната средна. Проста мярка за разтегнатост, използвана от 2014 насам.</p>
+  <p><b>RSI</b> измерва скоростта на движението, не посоката. Крайните стойности не са самостоятелен сигнал за обрат — при силен тренд RSI може да стои над 70 със седмици.</p>
+  <p>Данните за MVRV идват от безплатния достъп на Coin Metrics и са позволени за нетърговска употреба. Обновяват се веднъж дневно, така че последната стойност може да изостава с часове.</p>`;
+
+document.getElementById('i-int').addEventListener('click', e=>{
+  const b = e.target.closest('button[data-iint]'); if(!b) return;
+  S.iInt = b.dataset.iint;
+  document.querySelectorAll('#i-int button').forEach(x=>x.setAttribute('aria-pressed', x===b));
+  loadInd();
+});
+
 /* ---------------- оркестрация ---------------- */
 async function refresh(){
   document.body.classList.add('loading');
   document.getElementById('stamp').textContent = 'зарежда…';
-  const [f, sr, rt] = await Promise.all([
+  const [f, sr, rt, , sp] = await Promise.all([
     loadFunding().catch(()=>null),
     loadSeries().catch(()=>null),
     loadRatios().catch(()=>null),
     loadHL().catch(()=>null),
+    loadSpot().catch(()=>null),
   ]);
   S.funding = f; S.ratios = rt;
+  drawFlow();
   verdict(sr, avgOf(f));
-  analyse(sr, f, rt);
+  analyse(sr, f, rt, sp);
   const d = new Date();
   document.getElementById('stamp').textContent =
     String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
@@ -610,18 +1164,21 @@ document.getElementById('symbols').addEventListener('click', e=>{
   const b = e.target.closest('button[data-sym]'); if(!b) return;
   S.sym = b.dataset.sym;
   document.querySelectorAll('#symbols button[data-sym]').forEach(x=>x.setAttribute('aria-pressed', x===b));
+  if(S.tab==='price') loadPrice().catch(()=>{});
+  if(S.tab==='ind') loadInd();
   refresh();
 });
 document.getElementById('ranges').addEventListener('click', e=>{
   const b = e.target.closest('button[data-range]'); if(!b) return;
   S.range = b.dataset.range;
   document.querySelectorAll('#ranges button').forEach(x=>x.setAttribute('aria-pressed', x===b));
-  loadSeries().then(sr=>{ verdict(sr, avgOf(S.funding)); analyse(sr, S.funding, S.ratios); }).catch(()=>{});
+  Promise.all([loadSeries().catch(()=>null), loadSpot().catch(()=>null)])
+    .then(([sr,sp])=>{ drawFlow(); verdict(sr, avgOf(S.funding)); analyse(sr, S.funding, S.ratios, sp); });
 });
 document.getElementById('reload').addEventListener('click', refresh);
 document.getElementById('hl-go').addEventListener('click', loadAddress);
 document.getElementById('hl-addr').addEventListener('keydown', e=>{ if(e.key==='Enter') loadAddress(); });
-window.addEventListener('resize', drawChart);
+window.addEventListener('resize', ()=>{ drawChart(); drawFlow(); drawPrice(); drawZ(); });
 
 refresh();
 setInterval(refresh, 60000);
