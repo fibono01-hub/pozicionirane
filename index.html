@@ -272,6 +272,10 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
 
   <section>
     <h2>Оценка на веригата — <em>MVRV</em></h2>
+    <div class="controls" id="z-mode" style="margin-bottom:16px">
+      <button data-zm="all" aria-pressed="true">Цяла история</button>
+      <button data-zm="roll" aria-pressed="false">Плаващи 4 г.</button>
+    </div>
     <div id="ind-chain"></div>
     <canvas id="zchart" width="1400" height="380"></canvas>
     <div class="legend">
@@ -288,7 +292,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
 </div>
 
 <footer>
-  <span style="font-family:var(--mono);color:var(--ink)">версия 6</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
+  <span style="font-family:var(--mono);color:var(--ink)">версия 7</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
   Фъндингът и откритият интерес идват от публичните API-та на Binance, Bybit, OKX и Hyperliquid.
   Ако някоя борса покаже грешка, най-честата причина е блокиране по регион или ограничение на заявките — изчакай минута и обнови.
 </footer>
@@ -991,6 +995,23 @@ function gauge(name, val, unit, min, max, zones, note, na){
 }
 
 let cmError = null;
+S.zMode = 'all';
+
+function applyZMode(){
+  if(!chain) return;
+  const src = chain[S.zMode] || chain.all;
+  Object.assign(chain, { z:src.z, q15:src.q15, q85:src.q85,
+                         zmin:src.zmin, zmax:src.zmax, srt:src.srt });
+}
+
+// в кой процент от историята попада текущата стойност
+function zPercentile(){
+  if(!chain || !chain.srt) return null;
+  const v = chain.z[chain.z.length-1];
+  let lo=0, hi=chain.srt.length;
+  while(lo<hi){ const m=(lo+hi)>>1; chain.srt[m]<v ? lo=m+1 : hi=m; }
+  return lo/chain.srt.length*100;
+}
 
 async function cmTry(base, metrics, asset){
   const u = `${base}/timeseries/asset-metrics?assets=${asset}&metrics=${metrics}`
@@ -1040,12 +1061,32 @@ async function loadChain(){
   });
   if(mc.length<50){ cmError = 'недостатъчно точки в отговора'; chain=null; return null; }
 
-  const sd = stdev(mc) || 1;
-  const z = mc.map((v,i)=>(v-rc[i])/sd);
-  const srt = [...z].sort((a,b)=>a-b);
-  const q = k => srt[Math.min(srt.length-1, Math.floor(k*srt.length))];
-  chain = { t, mvrv: mc.map((v,i)=>v/rc[i]), z,
-            q15:q(0.15), q85:q(0.85), zmin:srt[0], zmax:srt[srt.length-1] };
+  // вариант 1: отклонение върху цялата история (класическият Z-score)
+  const sdAll = stdev(mc) || 1;
+  const zAll = mc.map((v,i)=>(v-rc[i])/sdAll);
+
+  // вариант 2: плаващо отклонение за 4 години, за да са циклите сравними
+  const WIN = 1460;
+  const ps=[0], pq=[0];
+  mc.forEach((v,i)=>{ ps.push(ps[i]+v); pq.push(pq[i]+v*v); });
+  const zRoll = mc.map((v,i)=>{
+    const a = Math.max(0, i-WIN+1), k = i-a+1;
+    const m = (ps[i+1]-ps[a])/k;
+    const va = Math.max(0, (pq[i+1]-pq[a])/k - m*m);
+    const sd = Math.sqrt(va) || sdAll;
+    return (v-rc[i])/sd;
+  });
+
+  const band = arr => {
+    const srt=[...arr].sort((x,y)=>x-y);
+    const q=k=>srt[Math.min(srt.length-1, Math.floor(k*srt.length))];
+    return { q15:q(0.15), q85:q(0.85), zmin:srt[0], zmax:srt[srt.length-1], srt };
+  };
+
+  chain = { t, mvrv: mc.map((v,i)=>v/rc[i]),
+            all:{ z:zAll,  ...band(zAll)  },
+            roll:{ z:zRoll, ...band(zRoll) } };
+  applyZMode();
   return chain;
 }
 
@@ -1168,9 +1209,12 @@ async function loadInd(){
     ];
     ch.innerHTML =
       gauge('MVRV Z-score', z, '', zMin, zMax, zZones,
-        z<zLo ? `Под ${fmt(zLo,1)} — долната зона за този актив. Средната монета е близо до или под цената си на придобиване.`
-            : z>zHi ? `Над ${fmt(zHi,1)} — горните 15% от историята на актива. Печалбата на хартия е голяма спрямо обичайното.`
-            : `В средния диапазон между ${fmt(zLo,1)} и ${fmt(zHi,1)} — без крайност в оценката.`) +
+        (()=>{ const pc = zPercentile();
+          const where = pc==null ? '' : ` Стойността е над ${fmt(pc,0)}% от историята на актива.`;
+          const base = S.zMode==='roll' ? ' Изчислено с плаващо отклонение за 4 години.' : '';
+          return (z<zLo ? `Под ${fmt(zLo,1)} — долната зона за този актив.`
+                : z>zHi ? `Над ${fmt(zHi,1)} — горните 15% от историята.`
+                : `В средния диапазон между ${fmt(zLo,1)} и ${fmt(zHi,1)}.`) + where + base; })()) +
       gauge('MVRV съотношение', m, 'x', 0.5, 4,
         [{w:14,c:T},{w:57,c:N},{w:29,c:R}],
         m<1 ? 'Под 1 — средната монета се държи на загуба.'
@@ -1185,11 +1229,18 @@ async function loadInd(){
 
 document.getElementById('ind-help').innerHTML = `
   <p><b>MVRV Z-score</b> сравнява пазарната капитализация с реализираната — сборът от цената, на която всяка монета е местена последно, тоест средната цена на придобиване. Разликата се дели на стандартното отклонение на пазарната капитализация. Показва колко голяма е печалбата на хартия спрямо историческата норма.</p>
+  <p><b>Цяла история срещу плаващи 4 години.</b> Класическият Z-score дели на стандартното отклонение на цялата пазарна капитализация. Проблемът е, че тя расте с порядъци, така че старите цикли изглеждат плоски, а новите стойности са смачкани — при биткойн Z над 5 днес би изисквал абсолютно отклонение, каквото не се е случвало. Плаващият вариант използва отклонението за последните четири години, което прави циклите съпоставими помежду си.</p>
   <p>Класическите прагове 0 и 5 при Z-score-а идват от историята на биткойн. Тук зоните са изчислени от разпределението на самия актив — долните и горните 15% от собствената му история — защото при ETH и SOL абсолютните числа не носят същото значение.</p>
   <p><b>Mayer Multiple</b> е цената, разделена на 200-дневната средна. Проста мярка за разтегнатост, използвана от 2014 насам.</p>
   <p><b>RSI</b> измерва скоростта на движението, не посоката. Крайните стойности не са самостоятелен сигнал за обрат — при силен тренд RSI може да стои над 70 със седмици.</p>
   <p>Данните за MVRV идват от безплатния достъп на Coin Metrics и са позволени за нетърговска употреба. Обновяват се веднъж дневно, така че последната стойност може да изостава с часове.</p>`;
 
+document.getElementById('z-mode').addEventListener('click', e=>{
+  const b = e.target.closest('button[data-zm]'); if(!b) return;
+  S.zMode = b.dataset.zm;
+  document.querySelectorAll('#z-mode button').forEach(x=>x.setAttribute('aria-pressed', x===b));
+  loadInd();
+});
 document.getElementById('i-int').addEventListener('click', e=>{
   const b = e.target.closest('button[data-iint]'); if(!b) return;
   S.iInt = b.dataset.iint;
