@@ -990,22 +990,58 @@ function gauge(name, val, unit, min, max, zones, note, na){
     <div class="foot">${note}</div></div>`;
 }
 
+let cmError = null;
+
+async function cmTry(base, metrics, asset){
+  const u = `${base}/timeseries/asset-metrics?assets=${asset}&metrics=${metrics}`
+          + `&frequency=1d&page_size=10000&start_time=2011-01-01`;
+  const r = await fetch(u);
+  const txt = await r.text();
+  if(!r.ok) throw new Error(`HTTP ${r.status} — ${txt.slice(0,160)}`);
+  const d = JSON.parse(txt);
+  if(!d.data || !d.data.length) throw new Error('празен отговор');
+  return d.data;
+}
+
 async function loadChain(){
   const a = CM_ASSET[S.sym];
+  cmError = null;
   if(!a){ chain=null; return null; }
-  const u = `${CM}/timeseries/asset-metrics?assets=${a}&metrics=CapMrktCurUSD,CapRealUSD`
-          + `&frequency=1d&page_size=10000`;
-  const r = await j(u);
-  const rows = (r.data||[]).filter(d=>d.CapMrktCurUSD && d.CapRealUSD);
-  if(!rows.length){ chain=null; return null; }
-  const mc = rows.map(d=>parseFloat(d.CapMrktCurUSD));
-  const rc = rows.map(d=>parseFloat(d.CapRealUSD));
+
+  // няколко варианта: различни адреси и различни метрики
+  const attempts = [
+    ['https://community-api.coinmetrics.io/v4', 'CapMrktCurUSD,CapRealUSD'],
+    ['https://api.coinmetrics.io/v4',           'CapMrktCurUSD,CapRealUSD'],
+    ['https://community-api.coinmetrics.io/v4', 'CapMrktCurUSD,CapMVRVCur'],
+    ['https://api.coinmetrics.io/v4',           'CapMrktCurUSD,CapMVRVCur'],
+  ];
+
+  let rows = null;
+  for(const [base, metrics] of attempts){
+    try{ rows = await cmTry(base, metrics, a); break; }
+    catch(e){ cmError = e.message || String(e); }
+  }
+  if(!rows){
+    if(!cmError) cmError = 'заявката е блокирана от браузъра (CORS)';
+    chain = null; return null;
+  }
+
+  const mc = [], rc = [], t = [];
+  rows.forEach(d=>{
+    const m = parseFloat(d.CapMrktCurUSD);
+    if(!isFinite(m) || m<=0) return;
+    let real = parseFloat(d.CapRealUSD);
+    if(!isFinite(real) || real<=0){
+      const ratio = parseFloat(d.CapMVRVCur);
+      if(!isFinite(ratio) || ratio<=0) return;
+      real = m/ratio;                        // реализирана капитализация от съотношението
+    }
+    mc.push(m); rc.push(real); t.push(new Date(d.time).getTime());
+  });
+  if(mc.length<50){ cmError = 'недостатъчно точки в отговора'; chain=null; return null; }
+
   const sd = stdev(mc) || 1;
-  chain = {
-    t: rows.map(d=>new Date(d.time).getTime()),
-    mvrv: mc.map((v,i)=>v/rc[i]),
-    z: mc.map((v,i)=>(v-rc[i])/sd)
-  };
+  chain = { t, mvrv: mc.map((v,i)=>v/rc[i]), z: mc.map((v,i)=>(v-rc[i])/sd) };
   return chain;
 }
 
@@ -1088,7 +1124,7 @@ async function loadInd(){
         mayer==null ? 'Няма 200 дни история за този актив.' : null) +
       gauge('Спрямо 200-седмичната', m200w, 'x', 0.5, 8,
         [{w:8,c:T},{w:52,c:N},{w:40,c:R}],
-        m200w==null ? '' : m200w<1 ? 'Под 200-седмичната. При биткойн това се е случвало само в най-дълбоките мечи фази.'
+        m200w==null ? '' : m200w<1 ? 'Цената е под 200-седмичната средна. При биткойн такива периоди са били кратки и около циклични дъна; при по-млади активи нивото няма същата история зад себе си.'
                 : m200w>5 ? 'Над пет пъти 200-седмичната — зона, характерна за късни етапи на цикъл.'
                 : 'В обичайния диапазон над дългосрочната средна.',
         m200w==null ? 'Няма 200 седмици история за този актив.' : null) +
@@ -1104,8 +1140,11 @@ async function loadInd(){
   try{
     const c2 = await loadChain();
     if(!c2){
+      const why = !CM_ASSET[S.sym]
+        ? `Coin Metrics няма покритие за ${S.sym}. Налично е за BTC, ETH и SOL.`
+        : `Не успях да взема данните. Причина: ${cmError||'неизвестна'}`;
       ch.innerHTML = `<div class="ind na"><div class="head"><span>MVRV</span><b>—</b></div>
-        <div class="foot">Coin Metrics няма покритие за ${S.sym}. Налично е за BTC, ETH и SOL.</div></div>`;
+        <div class="foot">${why}</div></div>`;
       drawZ(); return;
     }
     const z = c2.z[c2.z.length-1], m = c2.mvrv[c2.mvrv.length-1];
@@ -1122,7 +1161,8 @@ async function loadInd(){
             : 'Средната монета е на умерена печалба.');
     drawZ();
   }catch(e){
-    ch.innerHTML = '<div class="empty">Няма връзка с Coin Metrics.</div>';
+    ch.innerHTML = `<div class="ind na"><div class="head"><span>MVRV</span><b>—</b></div>
+      <div class="foot">Няма връзка с Coin Metrics. Причина: ${cmError || e.message || 'неизвестна'}</div></div>`;
   }
 }
 
