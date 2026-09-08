@@ -292,7 +292,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
 </div>
 
 <footer>
-  <span style="font-family:var(--mono);color:var(--ink)">версия 7</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
+  <span style="font-family:var(--mono);color:var(--ink)">версия 8</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
   Фъндингът и откритият интерес идват от публичните API-та на Binance, Bybit, OKX и Hyperliquid.
   Ако някоя борса покаже грешка, най-честата причина е блокиране по регион или ограничение на заявките — изчакай минута и обнови.
 </footer>
@@ -1000,7 +1000,7 @@ S.zMode = 'all';
 function applyZMode(){
   if(!chain) return;
   const src = chain[S.zMode] || chain.all;
-  Object.assign(chain, { z:src.z, q15:src.q15, q85:src.q85,
+  Object.assign(chain, { t:src.t, z:src.z, q15:src.q15, q85:src.q85,
                          zmin:src.zmin, zmax:src.zmax, srt:src.srt });
 }
 
@@ -1069,13 +1069,16 @@ async function loadChain(){
   const WIN = 1460;
   const ps=[0], pq=[0];
   mc.forEach((v,i)=>{ ps.push(ps[i]+v); pq.push(pq[i]+v*v); });
-  const zRoll = mc.map((v,i)=>{
+  const WARM = 730;   // без първите 2 години: там прозорецът е малък и отклонението клони към нула
+  const zRoll = [], tRoll = [];
+  for(let i=WARM;i<mc.length;i++){
     const a = Math.max(0, i-WIN+1), k = i-a+1;
     const m = (ps[i+1]-ps[a])/k;
     const va = Math.max(0, (pq[i+1]-pq[a])/k - m*m);
-    const sd = Math.sqrt(va) || sdAll;
-    return (v-rc[i])/sd;
-  });
+    let sd = Math.sqrt(va);
+    if(!isFinite(sd) || sd < m*0.01) continue;   // изроден прозорец
+    zRoll.push((mc[i]-rc[i])/sd); tRoll.push(t[i]);
+  }
 
   const band = arr => {
     const srt=[...arr].sort((x,y)=>x-y);
@@ -1083,9 +1086,10 @@ async function loadChain(){
     return { q15:q(0.15), q85:q(0.85), zmin:srt[0], zmax:srt[srt.length-1], srt };
   };
 
-  chain = { t, mvrv: mc.map((v,i)=>v/rc[i]),
-            all:{ z:zAll,  ...band(zAll)  },
-            roll:{ z:zRoll, ...band(zRoll) } };
+  chain = { mvrv: mc.map((v,i)=>v/rc[i]),
+            all:  { t,      z:zAll,  ...band(zAll)  },
+            roll: { t:tRoll, z:zRoll, ...band(zRoll) } };
+  if(zRoll.length < 200) chain.roll = null;
   applyZMode();
   return chain;
 }
@@ -1197,6 +1201,11 @@ async function loadInd(){
       ch.innerHTML = `<div class="ind na"><div class="head"><span>MVRV</span><b>—</b></div>
         <div class="foot">${why}</div></div>`;
       drawZ(); return;
+    }
+    if(S.zMode==='roll' && !c2.roll){
+      S.zMode='all'; applyZMode();
+      document.querySelectorAll('#z-mode button').forEach(x=>
+        x.setAttribute('aria-pressed', x.dataset.zm==='all'));
     }
     const z = c2.z[c2.z.length-1], m = c2.mvrv[c2.mvrv.length-1];
     // праговете идват от собствената история на актива, не от биткойн
