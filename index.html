@@ -288,7 +288,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
 </div>
 
 <footer>
-  <span style="font-family:var(--mono);color:var(--ink)">версия 4</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
+  <span style="font-family:var(--mono);color:var(--ink)">версия 5</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
   Фъндингът и откритият интерес идват от публичните API-та на Binance, Bybit, OKX и Hyperliquid.
   Ако някоя борса покаже грешка, най-честата причина е блокиране по регион или ограничение на заявките — изчакай минута и обнови.
 </footer>
@@ -1056,13 +1056,14 @@ function drawZ(){
   const hot=css.getPropertyValue('--hot').trim(), short=css.getPropertyValue('--short').trim();
 
   const v = chain.z, n = v.length;
-  const mn = Math.min(0, ...v)-0.5, mx = Math.max(...v)+0.5;
+  // скалата винаги включва прага 5, за да е зоната смислена и сравнима между активите
+  const mn = Math.min(0, ...v)-0.5, mx = Math.max(5.6, Math.max(...v)+0.5);
   const x = i => pad.l + i*(W-pad.l-pad.r)/(n-1);
   const y = q => pad.t + (mx-q)/(mx-mn)*(H-pad.t-pad.b);
 
   // зони
-  g.fillStyle = hot+'22';  g.fillRect(pad.l, y(mx), W-pad.l-pad.r, y(5)-y(mx));
-  g.fillStyle = short+'22';g.fillRect(pad.l, y(0), W-pad.l-pad.r, y(mn)-y(0));
+  g.fillStyle = hot+'22';   g.fillRect(pad.l, y(mx), W-pad.l-pad.r, Math.max(0, y(5)-y(mx)));
+  g.fillStyle = short+'22'; g.fillRect(pad.l, y(0),  W-pad.l-pad.r, Math.max(0, y(mn)-y(0)));
   g.strokeStyle = rule; g.lineWidth=1;
   [0,5].forEach(q=>{ g.beginPath(); g.moveTo(pad.l,y(q)); g.lineTo(W-pad.r,y(q)); g.stroke(); });
   g.font = '400 19px '+css.getPropertyValue('--mono'); g.fillStyle = dim;
@@ -1071,6 +1072,9 @@ function drawZ(){
   g.beginPath();
   for(let i=0;i<n;i++) i?g.lineTo(x(i),y(v[i])):g.moveTo(x(i),y(v[i]));
   g.strokeStyle = ink; g.lineWidth=2; g.stroke();
+
+  g.beginPath(); g.arc(x(n-1), y(v[n-1]), 5, 0, Math.PI*2);
+  g.fillStyle = ink; g.fill();
 
   g.fillStyle = dim;
   const yr = ms => new Date(ms).getFullYear();
