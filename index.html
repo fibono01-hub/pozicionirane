@@ -276,8 +276,8 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
     <canvas id="zchart" width="1400" height="380"></canvas>
     <div class="legend">
       <span><i style="background:var(--ink)"></i>MVRV Z-score</span>
-      <span><i style="background:var(--short);height:9px"></i>под нулата</span>
-      <span><i style="background:var(--hot);height:9px"></i>над 5</span>
+      <span><i style="background:var(--short);height:9px"></i>долни 15%</span>
+      <span><i style="background:var(--hot);height:9px"></i>горни 15%</span>
     </div>
   </section>
 
@@ -288,7 +288,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
 </div>
 
 <footer>
-  <span style="font-family:var(--mono);color:var(--ink)">версия 5</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
+  <span style="font-family:var(--mono);color:var(--ink)">версия 6</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
   Фъндингът и откритият интерес идват от публичните API-та на Binance, Bybit, OKX и Hyperliquid.
   Ако някоя борса покаже грешка, най-честата причина е блокиране по регион или ограничение на заявките — изчакай минута и обнови.
 </footer>
@@ -1041,7 +1041,11 @@ async function loadChain(){
   if(mc.length<50){ cmError = 'недостатъчно точки в отговора'; chain=null; return null; }
 
   const sd = stdev(mc) || 1;
-  chain = { t, mvrv: mc.map((v,i)=>v/rc[i]), z: mc.map((v,i)=>(v-rc[i])/sd) };
+  const z = mc.map((v,i)=>(v-rc[i])/sd);
+  const srt = [...z].sort((a,b)=>a-b);
+  const q = k => srt[Math.min(srt.length-1, Math.floor(k*srt.length))];
+  chain = { t, mvrv: mc.map((v,i)=>v/rc[i]), z,
+            q15:q(0.15), q85:q(0.85), zmin:srt[0], zmax:srt[srt.length-1] };
   return chain;
 }
 
@@ -1056,18 +1060,20 @@ function drawZ(){
   const hot=css.getPropertyValue('--hot').trim(), short=css.getPropertyValue('--short').trim();
 
   const v = chain.z, n = v.length;
-  // скалата винаги включва прага 5, за да е зоната смислена и сравнима между активите
-  const mn = Math.min(0, ...v)-0.5, mx = Math.max(5.6, Math.max(...v)+0.5);
+  const mn = Math.min(0, chain.zmin)-0.3, mx = chain.zmax+0.3;
   const x = i => pad.l + i*(W-pad.l-pad.r)/(n-1);
   const y = q => pad.t + (mx-q)/(mx-mn)*(H-pad.t-pad.b);
 
   // зони
-  g.fillStyle = hot+'22';   g.fillRect(pad.l, y(mx), W-pad.l-pad.r, Math.max(0, y(5)-y(mx)));
-  g.fillStyle = short+'22'; g.fillRect(pad.l, y(0),  W-pad.l-pad.r, Math.max(0, y(mn)-y(0)));
+  const hiZ = chain.q85, loZ = Math.min(0, chain.q15);
+  g.fillStyle = hot+'22';   g.fillRect(pad.l, y(mx),  W-pad.l-pad.r, Math.max(0, y(hiZ)-y(mx)));
+  g.fillStyle = short+'22'; g.fillRect(pad.l, y(loZ), W-pad.l-pad.r, Math.max(0, y(mn)-y(loZ)));
   g.strokeStyle = rule; g.lineWidth=1;
-  [0,5].forEach(q=>{ g.beginPath(); g.moveTo(pad.l,y(q)); g.lineTo(W-pad.r,y(q)); g.stroke(); });
   g.font = '400 19px '+css.getPropertyValue('--mono'); g.fillStyle = dim;
-  [0,5].forEach(q=>g.fillText(q, W-pad.r+10, y(q)+7));
+  [loZ, hiZ].forEach(q=>{
+    g.beginPath(); g.moveTo(pad.l,y(q)); g.lineTo(W-pad.r,y(q)); g.stroke();
+    g.fillText(q.toFixed(1), W-pad.r+10, y(q)+7);
+  });
 
   g.beginPath();
   for(let i=0;i<n;i++) i?g.lineTo(x(i),y(v[i])):g.moveTo(x(i),y(v[i]));
@@ -1152,12 +1158,19 @@ async function loadInd(){
       drawZ(); return;
     }
     const z = c2.z[c2.z.length-1], m = c2.mvrv[c2.mvrv.length-1];
+    // праговете идват от собствената история на актива, не от биткойн
+    const zLo = Math.min(0, c2.q15), zHi = c2.q85;
+    const zMin = c2.zmin-0.3, zMax = c2.zmax+0.3, zSpan = zMax-zMin;
+    const zZones = [
+      {w:(zLo-zMin)/zSpan*100, c:T},
+      {w:(zHi-zLo)/zSpan*100,  c:N},
+      {w:(zMax-zHi)/zSpan*100, c:R}
+    ];
     ch.innerHTML =
-      gauge('MVRV Z-score', z, '', -1, 10,
-        [{w:9,c:T},{w:46,c:N},{w:45,c:R}],
-        z<0 ? 'Под нулата — пазарната капитализация е под реализираната, тоест средната монета е на загуба. Историческа зона на дъна.'
-            : z>5 ? 'Над 5 — печалбата на хартия е голяма спрямо историческата волатилност. Зона, в която обикновено се случва разпределяне.'
-            : 'В средния диапазон, без крайност в оценката.') +
+      gauge('MVRV Z-score', z, '', zMin, zMax, zZones,
+        z<zLo ? `Под ${fmt(zLo,1)} — долната зона за този актив. Средната монета е близо до или под цената си на придобиване.`
+            : z>zHi ? `Над ${fmt(zHi,1)} — горните 15% от историята на актива. Печалбата на хартия е голяма спрямо обичайното.`
+            : `В средния диапазон между ${fmt(zLo,1)} и ${fmt(zHi,1)} — без крайност в оценката.`) +
       gauge('MVRV съотношение', m, 'x', 0.5, 4,
         [{w:14,c:T},{w:57,c:N},{w:29,c:R}],
         m<1 ? 'Под 1 — средната монета се държи на загуба.'
@@ -1172,6 +1185,7 @@ async function loadInd(){
 
 document.getElementById('ind-help').innerHTML = `
   <p><b>MVRV Z-score</b> сравнява пазарната капитализация с реализираната — сборът от цената, на която всяка монета е местена последно, тоест средната цена на придобиване. Разликата се дели на стандартното отклонение на пазарната капитализация. Показва колко голяма е печалбата на хартия спрямо историческата норма.</p>
+  <p>Класическите прагове 0 и 5 при Z-score-а идват от историята на биткойн. Тук зоните са изчислени от разпределението на самия актив — долните и горните 15% от собствената му история — защото при ETH и SOL абсолютните числа не носят същото значение.</p>
   <p><b>Mayer Multiple</b> е цената, разделена на 200-дневната средна. Проста мярка за разтегнатост, използвана от 2014 насам.</p>
   <p><b>RSI</b> измерва скоростта на движението, не посоката. Крайните стойности не са самостоятелен сигнал за обрат — при силен тренд RSI може да стои над 70 със седмици.</p>
   <p>Данните за MVRV идват от безплатния достъп на Coin Metrics и са позволени за нетърговска употреба. Обновяват се веднъж дневно, така че последната стойност може да изостава с часове.</p>`;
