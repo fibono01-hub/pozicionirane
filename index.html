@@ -105,7 +105,7 @@ canvas{width:100%;height:290px;display:block}
 .addma input{width:110px;font-family:var(--mono)}
 .addma button{background:var(--ink);color:var(--ground);border:0;padding:8px 15px;border-radius:2px;font:inherit;font-weight:500;cursor:pointer}
 #ma-read .venue{grid-template-columns:96px 1fr 92px}
-#zchart{height:190px}
+#zchart{height:240px}
 .ind{margin-bottom:20px}
 .ind .head{display:flex;justify-content:space-between;align-items:baseline;font-size:14px;margin-bottom:7px}
 .ind .head b{font-family:var(--mono);font-weight:500;font-size:15px}
@@ -305,6 +305,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
     <canvas id="zchart" width="1400" height="380"></canvas>
     <div class="legend">
       <span><i style="background:var(--ink)"></i>MVRV Z-score</span>
+      <span><i style="background:var(--ink-dim)"></i>цена, лог скала</span>
       <span><i style="background:var(--short);height:9px"></i>долни 15%</span>
       <span><i style="background:var(--hot);height:9px"></i>горни 15%</span>
     </div>
@@ -317,7 +318,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
 </div>
 
 <footer>
-  <span style="font-family:var(--mono);color:var(--ink)">версия 9</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
+  <span style="font-family:var(--mono);color:var(--ink)">версия 10</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
   Фъндингът и откритият интерес идват от публичните API-та на Binance, Bybit, OKX и Hyperliquid.
   Ако някоя борса покаже грешка, най-честата причина е блокиране по регион или ограничение на заявките — изчакай минута и обнови.
 </footer>
@@ -830,6 +831,7 @@ let price = null;          // серията на графиката
 let ref = {};              // серии по единица, за средните
 let refSym = null;
 let cursor = null;         // индекс на маркера
+let view = null;           // {i0,i1} видим отрез при увеличение
 
 Object.assign(S, { tab:'pos', pInt:'1w', pDays:365, pLog:true, mas:[
   {t:'sma', n:20,  u:'1d', on:true},
@@ -878,6 +880,7 @@ async function loadPrice(){
   ]);
   need.forEach((u,i)=>{ if(fetched[i]) ref[u] = fetched[i]; });
   price = main;
+  view = null;
 
   const now = document.getElementById('p-now');
   if(tick){
@@ -915,8 +918,15 @@ function drawPrice(){
   const dim=css.getPropertyValue('--ink-dim').trim(), rule=css.getPropertyValue('--rule').trim();
   const ink=css.getPropertyValue('--ink').trim(), panel=css.getPropertyValue('--panel').trim();
 
-  const vis = price.c, n = vis.length;
-  const lines = activeMAs();
+  const N = price.c.length;
+  if(!view) view = {i0:0, i1:N-1};
+  view.i0 = Math.max(0, Math.min(view.i0, N-3));
+  view.i1 = Math.min(N-1, Math.max(view.i1, view.i0+2));
+  const i0=view.i0, i1=view.i1;
+
+  const vis = price.c.slice(i0, i1+1), n = vis.length;
+  const vt  = price.t.slice(i0, i1+1);
+  const lines = activeMAs().map(l=>({ ...l, vals: l.vals.slice(i0, i1+1) }));
 
   const pool = vis.concat(...lines.map(l=>l.vals.filter(v=>v!=null)));
   const tr = S.pLog ? Math.log : (v=>v);
@@ -953,12 +963,12 @@ function drawPrice(){
       ? (d.getMonth()+1)+'.'+String(d.getFullYear()).slice(2)
       : d.getDate()+'.'+(d.getMonth()+1); };
   g.fillStyle = dim;
-  g.fillText(fd(price.t[0]), pad.l, H-8);
-  const tx = fd(price.t[n-1]);
+  g.fillText(fd(vt[0]), pad.l, H-8);
+  const tx = fd(vt[n-1]);
   g.fillText(tx, W-pad.r-g.measureText(tx).width, H-8);
 
   // маркер
-  const at = cursor==null ? n-1 : Math.max(0, Math.min(n-1, cursor));
+  const at = cursor==null ? n-1 : Math.max(0, Math.min(n-1, cursor-i0));
   if(cursor!=null){
     g.strokeStyle = dim; g.lineWidth=1.5; g.setLineDash([6,6]);
     g.beginPath(); g.moveTo(x(at), pad.t); g.lineTo(x(at), H-pad.b); g.stroke();
@@ -975,10 +985,13 @@ function drawPrice(){
 
   // отчитане под графиката
   const read = document.getElementById('ma-read');
-  const d = new Date(price.t[at]);
+  const d = new Date(vt[at]);
   const when = d.toLocaleString('bg-BG',{day:'numeric',month:'short',year:'numeric'})
              + (S.pInt==='4h' ? ' '+String(d.getHours()).padStart(2,'0')+':00' : '');
-  const head = `<div class="rhead">${cursor==null?'последна свещ':'при маркера'} · ${when} · ${fmt(vis[at], vis[at]<10?4:2)}</div>`;
+  const zoomed = (i1-i0+1) < N;
+  const head = `<div class="rhead">${cursor==null?'последна свещ':'при маркера'} · ${when} · ${fmt(vis[at], vis[at]<10?4:2)}`
+    + (zoomed ? ` · показани ${n} от ${N} свещи <a href="#" id="z-reset" style="color:var(--short)">нулирай</a>` : '')
+    + `</div>`;
   read.innerHTML = head + (lines.length ? lines.map(l=>{
     const v = l.vals[at];
     if(v==null) return `<div class="venue"><span class="name" style="color:${l.color}">${l.t.toUpperCase()} ${l.n}${UNIT[l.u]}</span>
@@ -997,23 +1010,69 @@ function renderChips(){
        <span class="rm" data-rm="${i}">×</span></button>`).join('');
 }
 
-/* --- маркер с пръст --- */
+/* --- маркер с един пръст, увеличение с два --- */
 (function(){
   const c = document.getElementById('pchart');
-  const setAt = ev => {
-    if(!price) return;
+  const PL=8, PR=100;
+
+  // от екранна точка към индекс в цялата серия
+  const idxAt = clientX => {
     const r = c.getBoundingClientRect();
-    const cx = (ev.touches ? ev.touches[0].clientX : ev.clientX) - r.left;
-    const ix = cx / r.width * c.width;
-    const n = price.c.length, pl = 8, pr = 100;
-    cursor = Math.round((ix - pl)/(c.width - pl - pr)*(n-1));
-    drawPrice();
+    const ix = (clientX - r.left) / r.width * c.width;
+    const n = view.i1 - view.i0 + 1;
+    const k = Math.round((ix - PL)/(c.width - PL - PR)*(n-1));
+    return view.i0 + Math.max(0, Math.min(n-1, k));
   };
-  c.addEventListener('pointerdown', setAt);
-  c.addEventListener('pointermove', e=>{ if(e.buttons) setAt(e); });
-  c.addEventListener('touchstart', e=>{ setAt(e); }, {passive:true});
-  c.addEventListener('touchmove',  e=>{ setAt(e); }, {passive:true});
-  c.addEventListener('dblclick', ()=>{ cursor=null; drawPrice(); });
+
+  const setAt = clientX => { if(!price) return; cursor = idxAt(clientX); drawPrice(); };
+
+  // прилага нов обхват, закотвен около дадена точка
+  const zoomTo = (span, anchorIdx) => {
+    const N = price.c.length;
+    span = Math.max(10, Math.min(N, Math.round(span)));
+    const rel = (anchorIdx - view.i0) / Math.max(1, (view.i1 - view.i0));
+    let i0 = Math.round(anchorIdx - rel*span);
+    i0 = Math.max(0, Math.min(N - span, i0));
+    view = { i0, i1: i0 + span - 1 };
+  };
+
+  let pinch = null;
+  const dist = t => Math.abs(t[0].clientX - t[1].clientX);
+  const mid  = t => (t[0].clientX + t[1].clientX)/2;
+
+  c.addEventListener('touchstart', e=>{
+    if(!price) return;
+    if(e.touches.length===2){
+      pinch = { d:dist(e.touches), span:view.i1-view.i0+1, anchor:idxAt(mid(e.touches)) };
+    } else if(e.touches.length===1){ setAt(e.touches[0].clientX); }
+  }, {passive:true});
+
+  c.addEventListener('touchmove', e=>{
+    if(!price) return;
+    if(e.touches.length===2 && pinch){
+      const d = dist(e.touches);
+      if(d>8){
+        zoomTo(pinch.span * (pinch.d/d), pinch.anchor);
+        cursor = null; drawPrice();
+      }
+    } else if(e.touches.length===1 && !pinch){ setAt(e.touches[0].clientX); }
+  }, {passive:true});
+
+  c.addEventListener('touchend', ()=>{ if(pinch) pinch=null; }, {passive:true});
+
+  c.addEventListener('pointerdown', e=>{ if(e.pointerType!=='touch') setAt(e.clientX); });
+  c.addEventListener('pointermove', e=>{ if(e.pointerType!=='touch' && e.buttons) setAt(e.clientX); });
+  c.addEventListener('wheel', e=>{
+    if(!price) return;
+    e.preventDefault();
+    zoomTo((view.i1-view.i0+1) * (e.deltaY>0 ? 1.2 : 0.83), idxAt(e.clientX));
+    drawPrice();
+  }, {passive:false});
+  c.addEventListener('dblclick', ()=>{ cursor=null; view=null; drawPrice(); });
+
+  document.getElementById('ma-read').addEventListener('click', e=>{
+    if(e.target.id==='z-reset'){ e.preventDefault(); view=null; cursor=null; drawPrice(); }
+  });
 })();
 
 document.getElementById('tabs').addEventListener('click', e=>{
@@ -1106,7 +1165,7 @@ S.zMode = 'all';
 function applyZMode(){
   if(!chain) return;
   const src = chain[S.zMode] || chain.all;
-  Object.assign(chain, { t:src.t, z:src.z, q15:src.q15, q85:src.q85,
+  Object.assign(chain, { t:src.t, z:src.z, px:src.px, q15:src.q15, q85:src.q85,
                          zmin:src.zmin, zmax:src.zmax, srt:src.srt });
 }
 
@@ -1137,10 +1196,10 @@ async function loadChain(){
 
   // няколко варианта: различни адреси и различни метрики
   const attempts = [
-    ['https://community-api.coinmetrics.io/v4', 'CapMrktCurUSD,CapRealUSD'],
-    ['https://api.coinmetrics.io/v4',           'CapMrktCurUSD,CapRealUSD'],
-    ['https://community-api.coinmetrics.io/v4', 'CapMrktCurUSD,CapMVRVCur'],
-    ['https://api.coinmetrics.io/v4',           'CapMrktCurUSD,CapMVRVCur'],
+    ['https://community-api.coinmetrics.io/v4', 'CapMrktCurUSD,CapRealUSD,PriceUSD'],
+    ['https://api.coinmetrics.io/v4',           'CapMrktCurUSD,CapRealUSD,PriceUSD'],
+    ['https://community-api.coinmetrics.io/v4', 'CapMrktCurUSD,CapMVRVCur,PriceUSD'],
+    ['https://api.coinmetrics.io/v4',           'CapMrktCurUSD,CapMVRVCur,PriceUSD'],
   ];
 
   let rows = null;
@@ -1153,7 +1212,7 @@ async function loadChain(){
     chain = null; return null;
   }
 
-  const mc = [], rc = [], t = [];
+  const mc = [], rc = [], t = [], pxs = [];
   rows.forEach(d=>{
     const m = parseFloat(d.CapMrktCurUSD);
     if(!isFinite(m) || m<=0) return;
@@ -1164,6 +1223,7 @@ async function loadChain(){
       real = m/ratio;                        // реализирана капитализация от съотношението
     }
     mc.push(m); rc.push(real); t.push(new Date(d.time).getTime());
+    const pu = parseFloat(d.PriceUSD); pxs.push(isFinite(pu)&&pu>0 ? pu : null);
   });
   if(mc.length<50){ cmError = 'недостатъчно точки в отговора'; chain=null; return null; }
 
@@ -1176,14 +1236,14 @@ async function loadChain(){
   const ps=[0], pq=[0];
   mc.forEach((v,i)=>{ ps.push(ps[i]+v); pq.push(pq[i]+v*v); });
   const WARM = 730;   // без първите 2 години: там прозорецът е малък и отклонението клони към нула
-  const zRoll = [], tRoll = [];
+  const zRoll = [], tRoll = [], pRoll = [];
   for(let i=WARM;i<mc.length;i++){
     const a = Math.max(0, i-WIN+1), k = i-a+1;
     const m = (ps[i+1]-ps[a])/k;
     const va = Math.max(0, (pq[i+1]-pq[a])/k - m*m);
     let sd = Math.sqrt(va);
     if(!isFinite(sd) || sd < m*0.01) continue;   // изроден прозорец
-    zRoll.push((mc[i]-rc[i])/sd); tRoll.push(t[i]);
+    zRoll.push((mc[i]-rc[i])/sd); tRoll.push(t[i]); pRoll.push(pxs[i]);
   }
 
   const band = arr => {
@@ -1192,9 +1252,10 @@ async function loadChain(){
     return { q15:q(0.15), q85:q(0.85), zmin:srt[0], zmax:srt[srt.length-1], srt };
   };
 
+  const anyPx = pxs.some(v=>v!=null);
   chain = { mvrv: mc.map((v,i)=>v/rc[i]),
-            all:  { t,      z:zAll,  ...band(zAll)  },
-            roll: { t:tRoll, z:zRoll, ...band(zRoll) } };
+            all:  { t,       z:zAll,  px: anyPx?pxs:null,   ...band(zAll)  },
+            roll: { t:tRoll, z:zRoll, px: anyPx?pRoll:null, ...band(zRoll) } };
   if(zRoll.length < 200) chain.roll = null;
   applyZMode();
   return chain;
@@ -1225,6 +1286,20 @@ function drawZ(){
     g.beginPath(); g.moveTo(pad.l,y(q)); g.lineTo(W-pad.r,y(q)); g.stroke();
     g.fillText(q.toFixed(1), W-pad.r+10, y(q)+7);
   });
+
+  // цената със собствена логаритмична скала, за да е сравнима с формата на Z-score-а
+  if(chain.px){
+    const pv = chain.px.filter(q=>q!=null);
+    if(pv.length>10){
+      const pmn = Math.log(Math.min(...pv)), pmx = Math.log(Math.max(...pv));
+      const pr = (pmx-pmn) || 1;
+      const py = q => pad.t + (pmx-Math.log(q))/pr*(H-pad.t-pad.b);
+      g.beginPath(); let st=false;
+      for(let i=0;i<n;i++){ const q=chain.px[i]; if(q==null) continue;
+        st ? g.lineTo(x(i),py(q)) : (g.moveTo(x(i),py(q)), st=true); }
+      g.strokeStyle = dim; g.lineWidth=1.5; g.stroke();
+    }
+  }
 
   g.beginPath();
   for(let i=0;i<n;i++) i?g.lineTo(x(i),y(v[i])):g.moveTo(x(i),y(v[i]));
