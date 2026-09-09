@@ -270,6 +270,9 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
     <button id="p-days-go">Приложи</button>
   </div>
 
+  <h2>Он-чейн нива</h2>
+  <div class="chips" id="oc-chips"></div>
+
   <h2>Плъзгащи средни</h2>
   <div class="chips" id="ma-chips"></div>
   <div class="addma">
@@ -318,7 +321,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
 </div>
 
 <footer>
-  <span style="font-family:var(--mono);color:var(--ink)">версия 10</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
+  <span style="font-family:var(--mono);color:var(--ink)">версия 11</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
   Фъндингът и откритият интерес идват от публичните API-та на Binance, Bybit, OKX и Hyperliquid.
   Ако някоя борса покаже грешка, най-честата причина е блокиране по регион или ограничение на заявките — изчакай минута и обнови.
 </footer>
@@ -833,6 +836,16 @@ let refSym = null;
 let cursor = null;         // индекс на маркера
 let view = null;           // {i0,i1} видим отрез при увеличение
 
+const OC = [
+  {k:'realized', name:'Realised price', color:'#B98BE0',
+   note:'Средната цена на придобиване на всички монети в обращение.'},
+  {k:'delta',    name:'Delta price',    color:'#5FBF7A',
+   note:'Реализирана минус средна капитализация. Модел за циклични дъна.'},
+  {k:'top',      name:'Top price',      color:'#E4685B',
+   note:'Средна капитализация по 35. Модел за циклични върхове.'},
+];
+Object.assign(S, { oc:{realized:true, delta:false, top:false} });
+
 Object.assign(S, { tab:'pos', pInt:'1w', pDays:365, pLog:true, mas:[
   {t:'sma', n:20,  u:'1d', on:true},
   {t:'sma', n:50,  u:'1d', on:true},
@@ -870,6 +883,10 @@ async function loadPrice(){
   const bars = S.pDays==='max' ? 1000
              : Math.max(20, Math.min(1000, Math.ceil(S.pDays / BARDAYS[S.pInt])));
 
+  if(OC.some(o=>S.oc[o.k]) && (!chain || chain.sym!==S.sym)){
+    try{ await loadChain(); }catch(e){ /* нивата просто няма да се появят */ }
+  }
+
   const units = [...new Set(S.mas.filter(m=>m.on).map(m=>m.u))];
   const need = units.filter(u=>!ref[u]);
 
@@ -898,14 +915,23 @@ async function loadPrice(){
   return price;
 }
 
+function activeLevels(){
+  if(!price || !chain || !chain.levels || chain.sym!==S.sym) return [];
+  return OC.filter(o=>S.oc[o.k]).map(o=>({
+    label:o.name, color:o.color, unit:'',
+    vals: alignMA(chain.levels.t, chain.levels[o.k], price.t), missing:false
+  }));
+}
+
 function activeMAs(){
   if(!price) return [];
   return S.mas.map((m,i)=>({m, i})).filter(o=>o.m.on).map(({m,i})=>{
     const src = ref[m.u];
     const vals = src ? alignMA(src.t, (m.t==='sma'?sma:ema)(src.c, m.n), price.t)
                      : new Array(price.t.length).fill(null);
-    return { ...m, color: MA_COLORS[i % MA_COLORS.length], vals, missing: !src };
-  });
+    return { ...m, label:`${m.t.toUpperCase()} ${m.n}${UNIT[m.u]}`,
+             color: MA_COLORS[i % MA_COLORS.length], vals, missing: !src };
+  }).concat(activeLevels());
 }
 
 function drawPrice(){
@@ -994,13 +1020,24 @@ function drawPrice(){
     + `</div>`;
   read.innerHTML = head + (lines.length ? lines.map(l=>{
     const v = l.vals[at];
-    if(v==null) return `<div class="venue"><span class="name" style="color:${l.color}">${l.t.toUpperCase()} ${l.n}${UNIT[l.u]}</span>
+    if(v==null) return `<div class="venue"><span class="name" style="color:${l.color}">${l.label}</span>
       <span style="color:var(--ink-dim);font-size:13px">${l.missing?'няма данни':'няма достатъчно история'}</span><span class="val">—</span></div>`;
     const q = (vis[at]/v-1)*100;
-    return `<div class="venue"><span class="name" style="color:${l.color}">${l.t.toUpperCase()} ${l.n}${UNIT[l.u]}</span>
+    return `<div class="venue"><span class="name" style="color:${l.color}">${l.label}</span>
       <span style="color:var(--ink-dim);font-size:13px">${fmt(v, v<10?4:2)} · ${q>=0?'над':'под'}</span>
       <span class="val ${q>=0?'pos':'neg'}">${pct(q)}</span></div>`;
   }).join('') : '<div class="empty">Няма избрани средни.</div>');
+}
+
+function renderOC(){
+  const box = document.getElementById('oc-chips');
+  const off = (!chain || chain.sym!==S.sym) ? '' : '';
+  box.innerHTML = OC.map(o=>
+    `<button data-oc="${o.k}" aria-pressed="${!!S.oc[o.k]}">
+       <i style="background:${o.color}"></i>${o.name}</button>`).join('')
+    + `<div class="foot" style="font-size:12px;color:var(--ink-dim);margin-top:8px;max-width:58ch;line-height:1.55">
+        ${OC.map(o=>`<b style="color:${o.color};font-weight:500">${o.name}</b> — ${o.note}`).join('<br>')}
+        <br>Terminal price изисква Coin Days Destroyed, което безплатният източник не дава. Top price играе същата роля.</div>`;
 }
 
 function renderChips(){
@@ -1082,7 +1119,7 @@ document.getElementById('tabs').addEventListener('click', e=>{
   document.getElementById('tab-pos').hidden   = S.tab!=='pos';
   document.getElementById('tab-price').hidden = S.tab!=='price';
   document.getElementById('tab-ind').hidden   = S.tab!=='ind';
-  if(S.tab==='price'){ renderChips(); loadPrice().catch(()=>{}); }
+  if(S.tab==='price'){ renderChips(); renderOC(); loadPrice().catch(()=>{}); }
   if(S.tab==='ind') loadInd();
 });
 document.getElementById('p-int').addEventListener('click', e=>{
@@ -1107,6 +1144,13 @@ document.getElementById('p-days-go').addEventListener('click', ()=>{
   S.pDays = v; el.blur();
   document.querySelectorAll('#p-view button').forEach(x=>x.setAttribute('aria-pressed', false));
   loadPrice().catch(()=>{});
+});
+document.getElementById('oc-chips').addEventListener('click', e=>{
+  const b = e.target.closest('button[data-oc]'); if(!b) return;
+  const k = b.dataset.oc;
+  S.oc[k] = !S.oc[k];
+  b.setAttribute('aria-pressed', S.oc[k]);
+  loadPrice().catch(()=>drawPrice());
 });
 document.getElementById('ma-chips').addEventListener('click', e=>{
   const rm = e.target.closest('[data-rm]');
@@ -1196,10 +1240,10 @@ async function loadChain(){
 
   // няколко варианта: различни адреси и различни метрики
   const attempts = [
-    ['https://community-api.coinmetrics.io/v4', 'CapMrktCurUSD,CapRealUSD,PriceUSD'],
-    ['https://api.coinmetrics.io/v4',           'CapMrktCurUSD,CapRealUSD,PriceUSD'],
-    ['https://community-api.coinmetrics.io/v4', 'CapMrktCurUSD,CapMVRVCur,PriceUSD'],
-    ['https://api.coinmetrics.io/v4',           'CapMrktCurUSD,CapMVRVCur,PriceUSD'],
+    ['https://community-api.coinmetrics.io/v4', 'CapMrktCurUSD,CapRealUSD,SplyCur,PriceUSD'],
+    ['https://api.coinmetrics.io/v4',           'CapMrktCurUSD,CapRealUSD,SplyCur,PriceUSD'],
+    ['https://community-api.coinmetrics.io/v4', 'CapMrktCurUSD,CapMVRVCur,SplyCur,PriceUSD'],
+    ['https://api.coinmetrics.io/v4',           'CapMrktCurUSD,CapMVRVCur,SplyCur,PriceUSD'],
   ];
 
   let rows = null;
@@ -1252,8 +1296,28 @@ async function loadChain(){
     return { q15:q(0.15), q85:q(0.85), zmin:srt[0], zmax:srt[srt.length-1], srt };
   };
 
+  // предлагане: директно или изведено от капитализация и цена
+  const sply = rows.map((d,i)=>{
+    const sc = parseFloat(d.SplyCur);
+    if(isFinite(sc) && sc>0) return sc;
+    return (pxs[i]!=null) ? mc[i]/pxs[i] : null;
+  }).filter((_,i)=>true);
+
+  // average cap: кумулативна средна на пазарната капитализация
+  const lv = { t:[], realized:[], delta:[], top:[] };
+  let run = 0;
+  for(let i=0;i<mc.length;i++){
+    run += mc[i];
+    const avg = run/(i+1);
+    const sp = sply[i];
+    lv.t.push(t[i]);
+    lv.realized.push(sp ? rc[i]/sp : null);
+    lv.delta.push(sp ? (rc[i]-avg)/sp : null);
+    lv.top.push(sp ? avg*35/sp : null);
+  }
+
   const anyPx = pxs.some(v=>v!=null);
-  chain = { mvrv: mc.map((v,i)=>v/rc[i]),
+  chain = { sym:S.sym, levels:lv, mvrv: mc.map((v,i)=>v/rc[i]),
             all:  { t,       z:zAll,  px: anyPx?pxs:null,   ...band(zAll)  },
             roll: { t:tRoll, z:zRoll, px: anyPx?pRoll:null, ...band(zRoll) } };
   if(zRoll.length < 200) chain.roll = null;
