@@ -102,7 +102,8 @@ canvas{width:100%;height:290px;display:block}
 #ma-read .rhead{font-size:12px;color:var(--ink-dim);margin-bottom:9px;font-family:var(--mono)}
 .addma select,.addma input{background:var(--panel);border:1px solid var(--rule);color:var(--ink);
   padding:8px 10px;border-radius:2px;font:inherit;font-size:14px}
-.addma input{width:110px;font-family:var(--mono)}
+.addma input{width:96px;font-family:var(--mono)}
+#ma-mult{width:70px}
 .addma button{background:var(--ink);color:var(--ground);border:0;padding:8px 15px;border-radius:2px;font:inherit;font-weight:500;cursor:pointer}
 #ma-read .venue{grid-template-columns:96px 1fr 92px}
 #zchart{height:240px}
@@ -249,7 +250,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
     <button data-int="4h" aria-pressed="false">4 часа</button>
     <button data-int="1d" aria-pressed="false">Дневно</button>
     <button data-int="1w" aria-pressed="true">Седмично</button>
-    <button id="p-log" aria-pressed="true">Лог</button>
+    <button id="p-log" aria-pressed="false">Лог</button>
   </div>
 
   <canvas id="pchart" width="1400" height="640"></canvas>
@@ -260,10 +261,10 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
     <button data-days="30">1 м</button>
     <button data-days="90">3 м</button>
     <button data-days="180">6 м</button>
-    <button data-days="365" aria-pressed="true">1 г</button>
+    <button data-days="365">1 г</button>
     <button data-days="730">2 г</button>
     <button data-days="1460">4 г</button>
-    <button data-days="max">Макс</button>
+    <button data-days="max" aria-pressed="true">Макс</button>
   </div>
   <div class="addma">
     <input id="p-days" type="number" inputmode="numeric" min="5" max="6000" placeholder="дни">
@@ -283,6 +284,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
       <option value="1w">седмици</option>
       <option value="4h">4-часови</option>
     </select>
+    <input id="ma-mult" type="number" inputmode="decimal" step="0.1" min="0.1" max="10" placeholder="×1">
     <button id="ma-add">Добави</button>
   </div>
 </div>
@@ -299,15 +301,16 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
   </section>
 
   <section>
-    <h2>Оценка на веригата — <em>MVRV</em></h2>
+    <h2>Графики върху цената</h2>
     <div class="controls" id="z-mode" style="margin-bottom:16px">
-      <button data-zm="all" aria-pressed="true">Цяла история</button>
-      <button data-zm="roll" aria-pressed="false">Плаващи 4 г.</button>
+      <button data-zm="all">Цяла история</button>
+      <button data-zm="roll" aria-pressed="true">Плаващи 4 г.</button>
     </div>
     <div id="ind-chain"></div>
+    <div class="chips" id="ind-pick"></div>
     <canvas id="zchart" width="1400" height="380"></canvas>
     <div class="legend">
-      <span><i style="background:var(--ink)"></i>MVRV Z-score</span>
+      <span><i style="background:var(--ink)"></i>избраният индикатор</span>
       <span><i style="background:var(--ink-dim)"></i>цена, лог скала</span>
       <span><i style="background:var(--short);height:9px"></i>долни 15%</span>
       <span><i style="background:var(--hot);height:9px"></i>горни 15%</span>
@@ -321,7 +324,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
 </div>
 
 <footer>
-  <span style="font-family:var(--mono);color:var(--ink)">версия 11</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
+  <span style="font-family:var(--mono);color:var(--ink)">версия 12</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
   Фъндингът и откритият интерес идват от публичните API-та на Binance, Bybit, OKX и Hyperliquid.
   Ако някоя борса покаже грешка, най-честата причина е блокиране по регион или ограничение на заявките — изчакай минута и обнови.
 </footer>
@@ -846,11 +849,12 @@ const OC = [
 ];
 Object.assign(S, { oc:{realized:true, delta:false, top:false} });
 
-Object.assign(S, { tab:'pos', pInt:'1w', pDays:365, pLog:true, mas:[
-  {t:'sma', n:20,  u:'1d', on:true},
-  {t:'sma', n:50,  u:'1d', on:true},
-  {t:'sma', n:200, u:'1d', on:true},
-  {t:'sma', n:200, u:'1w', on:true},
+Object.assign(S, { tab:'pos', pInt:'1w', pDays:'max', pLog:false, mas:[
+  {t:'sma', n:111, u:'1d', k:1, on:true},
+  {t:'sma', n:350, u:'1d', k:2, on:true},
+  {t:'sma', n:200, u:'1w', k:1, on:true},
+  {t:'ema', n:200, u:'1d', k:1, on:true},
+  {t:'ema', n:21,  u:'1w', k:1, on:true},
 ]});
 
 const sma = (a,n) => a.map((_,i)=> i<n-1 ? null : a.slice(i-n+1,i+1).reduce((x,y)=>x+y,0)/n);
@@ -883,7 +887,7 @@ async function loadPrice(){
   const bars = S.pDays==='max' ? 1000
              : Math.max(20, Math.min(1000, Math.ceil(S.pDays / BARDAYS[S.pInt])));
 
-  if(OC.some(o=>S.oc[o.k]) && (!chain || chain.sym!==S.sym)){
+  if((!chain || chain.sym!==S.sym) && CM_ASSET[S.sym]){
     try{ await loadChain(); }catch(e){ /* нивата просто няма да се появят */ }
   }
 
@@ -923,13 +927,24 @@ function activeLevels(){
   }));
 }
 
+// за дневни средни предпочита пълната история от Coin Metrics пред 1000-те свещи на Binance
+function refFor(u){
+  if(u==='1d' && chain && chain.sym===S.sym && chain.all && chain.all.px){
+    const t=[], c=[];
+    chain.all.t.forEach((tt,i)=>{ const v=chain.all.px[i]; if(v!=null){ t.push(tt); c.push(v); } });
+    if(c.length > (ref['1d']?ref['1d'].c.length:0)) return {t, c};
+  }
+  return ref[u];
+}
+
 function activeMAs(){
   if(!price) return [];
   return S.mas.map((m,i)=>({m, i})).filter(o=>o.m.on).map(({m,i})=>{
-    const src = ref[m.u];
-    const vals = src ? alignMA(src.t, (m.t==='sma'?sma:ema)(src.c, m.n), price.t)
-                     : new Array(price.t.length).fill(null);
-    return { ...m, label:`${m.t.toUpperCase()} ${m.n}${UNIT[m.u]}`,
+    const src = refFor(m.u);
+    const k = m.k || 1;
+    const raw = src ? (m.t==='sma'?sma:ema)(src.c, m.n).map(v=>v==null?null:v*k) : null;
+    const vals = raw ? alignMA(src.t, raw, price.t) : new Array(price.t.length).fill(null);
+    return { ...m, label:`${m.t.toUpperCase()} ${m.n}${UNIT[m.u]}${(m.k&&m.k!==1)?' ×'+m.k:''}`,
              color: MA_COLORS[i % MA_COLORS.length], vals, missing: !src };
   }).concat(activeLevels());
 }
@@ -1043,7 +1058,7 @@ function renderOC(){
 function renderChips(){
   document.getElementById('ma-chips').innerHTML = S.mas.map((m,i)=>
     `<button data-ma="${i}" aria-pressed="${m.on}">
-       <i style="background:${MA_COLORS[i%MA_COLORS.length]}"></i>${m.t.toUpperCase()} ${m.n}${UNIT[m.u]}
+       <i style="background:${MA_COLORS[i%MA_COLORS.length]}"></i>${m.t.toUpperCase()} ${m.n}${UNIT[m.u]}${(m.k&&m.k!==1)?' ×'+m.k:''}
        <span class="rm" data-rm="${i}">×</span></button>`).join('');
 }
 
@@ -1165,8 +1180,9 @@ document.getElementById('ma-add').addEventListener('click', ()=>{
   const u = document.getElementById('ma-unit').value;
   const el = document.getElementById('ma-len'), n = parseInt(el.value,10);
   if(!n || n<2 || n>400) return;
-  if(!S.mas.some(m=>m.t===t && m.n===n && m.u===u)) S.mas.push({t,n,u,on:true});
-  el.value=''; el.blur();
+  const mk = parseFloat(document.getElementById('ma-mult').value) || 1;
+  if(!S.mas.some(m=>m.t===t && m.n===n && m.u===u && (m.k||1)===mk)) S.mas.push({t,n,u,k:mk,on:true});
+  el.value=''; document.getElementById('ma-mult').value=''; el.blur();
   renderChips(); loadPrice().catch(()=>drawPrice());
 });
 
@@ -1204,7 +1220,8 @@ function gauge(name, val, unit, min, max, zones, note, na){
 }
 
 let cmError = null;
-S.zMode = 'all';
+S.zMode = 'roll';
+S.indPick = 'z';
 
 function applyZMode(){
   if(!chain) return;
@@ -1325,44 +1342,104 @@ async function loadChain(){
   return chain;
 }
 
+// исторически серии за всеки индикатор, върху дневната цена от Coin Metrics
+function indSeries(){
+  if(!chain || !chain.all || !chain.all.px) return {};
+  const t = chain.all.t, px = chain.all.px;
+  const ok = px.map(v=>v!=null);
+  const c = px.map(v=>v==null?NaN:v);
+
+  const mav = n => { const o=new Array(c.length).fill(null); let sum=0;
+    for(let i=0;i<c.length;i++){ sum+=c[i]; if(i>=n) sum-=c[i-n];
+      if(i>=n-1 && isFinite(sum)) o[i]=sum/n; } return o; };
+  const s200 = mav(200), s1400 = mav(1400);
+
+  // RSI 14 с плъзгащо изглаждане
+  const r = new Array(c.length).fill(null);
+  let g=0,l=0;
+  for(let i=1;i<c.length;i++){
+    const d=c[i]-c[i-1]; if(!isFinite(d)) continue;
+    const up=d>0?d:0, dn=d<0?-d:0;
+    if(i<=14){ g+=up/14; l+=dn/14; if(i===14) r[i]= l===0?100:100-100/(1+g/l); }
+    else { g=(g*13+up)/14; l=(l*13+dn)/14; r[i]= l===0?100:100-100/(1+g/l); }
+  }
+
+  // реализирана волатилност 30 дни
+  const vol = new Array(c.length).fill(null);
+  for(let i=30;i<c.length;i++){
+    const rr=[]; for(let k=i-29;k<=i;k++) if(isFinite(c[k])&&isFinite(c[k-1])) rr.push(Math.log(c[k]/c[k-1]));
+    if(rr.length>20) vol[i]=stdev(rr)*Math.sqrt(365)*100;
+  }
+
+  return {
+    z:      { t:chain.t, v:chain.z, px:chain.px, name:'MVRV Z-score', bands:true },
+    mvrv:   { t, v:chain.mvrv, px, name:'MVRV съотношение', ref:[1] },
+    rsi:    { t, v:r, px, name:'RSI 14д', ref:[30,70] },
+    mayer:  { t, v:c.map((q,i)=>s200[i]?q/s200[i]:null),  px, name:'Mayer Multiple', ref:[0.8,2.4] },
+    w200:   { t, v:c.map((q,i)=>s1400[i]?q/s1400[i]:null), px, name:'Спрямо 200-седмичната', ref:[1] },
+    vol:    { t, v:vol, px, name:'Волатилност 30д', ref:[] },
+  };
+}
+
+function renderPick(){
+  const cur = indSeries();
+  document.getElementById('ind-pick').innerHTML = Object.keys(cur).map(k=>
+    `<button data-pick="${k}" aria-pressed="${S.indPick===k}">${cur[k].name}</button>`).join('');
+}
+
 function drawZ(){
   const c = document.getElementById('zchart'), g = c.getContext('2d');
-  const W=c.width, H=c.height, pad={l:8,r:64,t:12,b:26};
+  const W=c.width, H=c.height, pad={l:8,r:70,t:12,b:26};
   g.clearRect(0,0,W,H);
-  if(!chain || chain.z.length<10) return;
+  if(!chain) return;
+  const all = indSeries();
+  const S1 = all[S.indPick] || all.z;
+  if(!S1 || !S1.v) return;
+
+  const idx = S1.v.map((v,i)=>i).filter(i=>S1.v[i]!=null && isFinite(S1.v[i]));
+  if(idx.length<10) return;
+  const v = idx.map(i=>S1.v[i]);
+  const pxs = S1.px ? idx.map(i=>S1.px[i]) : null;
+
   const css = getComputedStyle(document.documentElement);
   const dim=css.getPropertyValue('--ink-dim').trim(), rule=css.getPropertyValue('--rule').trim();
   const ink=css.getPropertyValue('--ink').trim();
   const hot=css.getPropertyValue('--hot').trim(), short=css.getPropertyValue('--short').trim();
 
-  const v = chain.z, n = v.length;
-  const mn = Math.min(0, chain.zmin)-0.3, mx = chain.zmax+0.3;
+  const n = v.length;
+  const mn = Math.min(...v) - Math.abs(Math.min(...v))*0.05 - 0.05;
+  const mx = Math.max(...v) + Math.abs(Math.max(...v))*0.05 + 0.05;
   const x = i => pad.l + i*(W-pad.l-pad.r)/(n-1);
   const y = q => pad.t + (mx-q)/(mx-mn)*(H-pad.t-pad.b);
 
-  // зони
-  const hiZ = chain.q85, loZ = Math.min(0, chain.q15);
-  g.fillStyle = hot+'22';   g.fillRect(pad.l, y(mx),  W-pad.l-pad.r, Math.max(0, y(hiZ)-y(mx)));
-  g.fillStyle = short+'22'; g.fillRect(pad.l, y(loZ), W-pad.l-pad.r, Math.max(0, y(mn)-y(loZ)));
-  g.strokeStyle = rule; g.lineWidth=1;
-  g.font = '400 19px '+css.getPropertyValue('--mono'); g.fillStyle = dim;
-  [loZ, hiZ].forEach(q=>{
-    g.beginPath(); g.moveTo(pad.l,y(q)); g.lineTo(W-pad.r,y(q)); g.stroke();
-    g.fillText(q.toFixed(1), W-pad.r+10, y(q)+7);
-  });
+  g.font = '400 19px '+css.getPropertyValue('--mono');
 
-  // цената със собствена логаритмична скала, за да е сравнима с формата на Z-score-а
-  if(chain.px){
-    const pv = chain.px.filter(q=>q!=null);
-    if(pv.length>10){
-      const pmn = Math.log(Math.min(...pv)), pmx = Math.log(Math.max(...pv));
-      const pr = (pmx-pmn) || 1;
-      const py = q => pad.t + (pmx-Math.log(q))/pr*(H-pad.t-pad.b);
-      g.beginPath(); let st=false;
-      for(let i=0;i<n;i++){ const q=chain.px[i]; if(q==null) continue;
-        st ? g.lineTo(x(i),py(q)) : (g.moveTo(x(i),py(q)), st=true); }
-      g.strokeStyle = dim; g.lineWidth=1.5; g.stroke();
-    }
+  // зони: при Z-score по персентили, иначе по класическите прагове
+  let marks = [];
+  if(S.indPick==='z'){
+    const hiZ = chain.q85, loZ = Math.min(0, chain.q15);
+    g.fillStyle = hot+'22';   g.fillRect(pad.l, y(mx),  W-pad.l-pad.r, Math.max(0, y(hiZ)-y(mx)));
+    g.fillStyle = short+'22'; g.fillRect(pad.l, y(loZ), W-pad.l-pad.r, Math.max(0, y(mn)-y(loZ)));
+    marks = [loZ, hiZ];
+  } else {
+    marks = (S1.ref||[]).filter(q=>q>mn && q<mx);
+  }
+  g.strokeStyle = rule; g.lineWidth=1; g.fillStyle = dim;
+  marks.forEach(q=>{
+    g.beginPath(); g.moveTo(pad.l,y(q)); g.lineTo(W-pad.r,y(q)); g.stroke();
+    g.fillText(q.toFixed(q<10?1:0), W-pad.r+10, y(q)+7);
+  });
+  [mn,mx].forEach(q=>g.fillText(q.toFixed(Math.abs(q)<10?1:0), W-pad.r+10, y(q)+ (q===mx?12:-2)));
+
+  // цена със собствена логаритмична скала
+  if(pxs && pxs.some(q=>q!=null)){
+    const fin = pxs.filter(q=>q!=null && q>0);
+    const pmn=Math.log(Math.min(...fin)), pmx=Math.log(Math.max(...fin)), pr=(pmx-pmn)||1;
+    const py = q => pad.t + (pmx-Math.log(q))/pr*(H-pad.t-pad.b);
+    g.beginPath(); let st=false;
+    for(let i=0;i<n;i++){ const q=pxs[i]; if(q==null||q<=0) continue;
+      st ? g.lineTo(x(i),py(q)) : (g.moveTo(x(i),py(q)), st=true); }
+    g.strokeStyle = dim; g.lineWidth=1.5; g.stroke();
   }
 
   g.beginPath();
@@ -1373,9 +1450,10 @@ function drawZ(){
   g.fillStyle = ink; g.fill();
 
   g.fillStyle = dim;
-  const yr = ms => new Date(ms).getFullYear();
-  g.fillText(yr(chain.t[0]), pad.l, H-6);
-  const tx = String(yr(chain.t[n-1]));
+  const T = S1.t;
+  const yr = i => new Date(T[idx[i]]).getFullYear();
+  g.fillText(yr(0), pad.l, H-6);
+  const tx = String(yr(n-1));
   g.fillText(tx, W-pad.r-g.measureText(tx).width, H-6);
 }
 
@@ -1445,7 +1523,7 @@ async function loadInd(){
         : `Не успях да взема данните. Причина: ${cmError||'неизвестна'}`;
       ch.innerHTML = `<div class="ind na"><div class="head"><span>MVRV</span><b>—</b></div>
         <div class="foot">${why}</div></div>`;
-      drawZ(); return;
+      document.getElementById('ind-pick').innerHTML=''; drawZ(); return;
     }
     if(S.zMode==='roll' && !c2.roll){
       S.zMode='all'; applyZMode();
@@ -1474,7 +1552,7 @@ async function loadInd(){
         m<1 ? 'Под 1 — средната монета се държи на загуба.'
             : m>3 ? 'Над 3 — средната монета е на значителна печалба, което увеличава мотива за продаване.'
             : 'Средната монета е на умерена печалба.');
-    drawZ();
+    renderPick(); drawZ();
   }catch(e){
     ch.innerHTML = `<div class="ind na"><div class="head"><span>MVRV</span><b>—</b></div>
       <div class="foot">Няма връзка с Coin Metrics. Причина: ${cmError || e.message || 'неизвестна'}</div></div>`;
@@ -1489,6 +1567,12 @@ document.getElementById('ind-help').innerHTML = `
   <p><b>RSI</b> измерва скоростта на движението, не посоката. Крайните стойности не са самостоятелен сигнал за обрат — при силен тренд RSI може да стои над 70 със седмици.</p>
   <p>Данните за MVRV идват от безплатния достъп на Coin Metrics и са позволени за нетърговска употреба. Обновяват се веднъж дневно, така че последната стойност може да изостава с часове.</p>`;
 
+document.getElementById('ind-pick').addEventListener('click', e=>{
+  const b = e.target.closest('button[data-pick]'); if(!b) return;
+  S.indPick = b.dataset.pick;
+  document.querySelectorAll('#ind-pick button').forEach(x=>x.setAttribute('aria-pressed', x===b));
+  drawZ();
+});
 document.getElementById('z-mode').addEventListener('click', e=>{
   const b = e.target.closest('button[data-zm]'); if(!b) return;
   S.zMode = b.dataset.zm;
