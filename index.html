@@ -103,7 +103,8 @@ canvas{width:100%;height:290px;display:block}
 .addma select,.addma input{background:var(--panel);border:1px solid var(--rule);color:var(--ink);
   padding:8px 10px;border-radius:2px;font:inherit;font-size:14px}
 .addma input{width:96px;font-family:var(--mono)}
-#ma-mult{width:70px}
+#ma-mult{width:120px}
+.addma select{max-width:150px}
 .addma button{background:var(--ink);color:var(--ground);border:0;padding:8px 15px;border-radius:2px;font:inherit;font-weight:500;cursor:pointer}
 #ma-read .venue{grid-template-columns:96px 1fr 92px}
 #zchart{height:240px}
@@ -284,7 +285,12 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
       <option value="1w">седмици</option>
       <option value="4h">4-часови</option>
     </select>
-    <input id="ma-mult" type="number" inputmode="decimal" step="0.1" min="0.1" max="10" placeholder="×1">
+    <input id="ma-mult" type="text" inputmode="decimal" placeholder="×1 (напр. 1,6)">
+    <select id="ma-deriv">
+      <option value="0">без производна</option>
+      <option value="1">1-ва производна</option>
+      <option value="2">2-ра производна</option>
+    </select>
     <button id="ma-add">Добави</button>
   </div>
 </div>
@@ -324,7 +330,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
 </div>
 
 <footer>
-  <span style="font-family:var(--mono);color:var(--ink)">версия 12</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
+  <span style="font-family:var(--mono);color:var(--ink)">версия 13</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
   Фъндингът и откритият интерес идват от публичните API-та на Binance, Bybit, OKX и Hyperliquid.
   Ако някоя борса покаже грешка, най-честата причина е блокиране по регион или ограничение на заявките — изчакай минута и обнови.
 </footer>
@@ -941,10 +947,17 @@ function activeMAs(){
   if(!price) return [];
   return S.mas.map((m,i)=>({m, i})).filter(o=>o.m.on).map(({m,i})=>{
     const src = refFor(m.u);
-    const k = m.k || 1;
-    const raw = src ? (m.t==='sma'?sma:ema)(src.c, m.n).map(v=>v==null?null:v*k) : null;
+    const k = m.k || 1, dv = m.d || 0;
+    let raw = src ? (m.t==='sma'?sma:ema)(src.c, m.n).map(v=>v==null?null:v*k) : null;
+    if(raw && dv>0){
+      // първа производна: процентна промяна за един интервал на самата средна
+      let d1 = raw.map((v,q)=> (q===0||v==null||raw[q-1]==null||raw[q-1]===0) ? null : (v/raw[q-1]-1)*100);
+      raw = dv===1 ? d1
+          : d1.map((v,q)=> (q===0||v==null||d1[q-1]==null) ? null : v-d1[q-1]);
+    }
     const vals = raw ? alignMA(src.t, raw, price.t) : new Array(price.t.length).fill(null);
-    return { ...m, label:`${m.t.toUpperCase()} ${m.n}${UNIT[m.u]}${(m.k&&m.k!==1)?' ×'+m.k:''}`,
+    const dm = dv===1 ? ' ′' : dv===2 ? ' ″' : '';
+    return { ...m, deriv:dv, label:`${m.t.toUpperCase()} ${m.n}${UNIT[m.u]}${(k!==1)?' ×'+k:''}${dm}`,
              color: MA_COLORS[i % MA_COLORS.length], vals, missing: !src };
   }).concat(activeLevels());
 }
@@ -967,7 +980,13 @@ function drawPrice(){
 
   const vis = price.c.slice(i0, i1+1), n = vis.length;
   const vt  = price.t.slice(i0, i1+1);
-  const lines = activeMAs().map(l=>({ ...l, vals: l.vals.slice(i0, i1+1) }));
+  const allL = activeMAs().map(l=>({ ...l, vals: l.vals.slice(i0, i1+1) }));
+  const lines = allL.filter(l=>!l.deriv);
+  const dlines = allL.filter(l=>l.deriv);
+
+  // производните имат друга мерна единица и си делят собствен панел долу
+  const dH = dlines.length ? 150 : 0, dGap = dlines.length ? 22 : 0;
+  const pb = H - pad.b - dH - dGap;
 
   const pool = vis.concat(...lines.map(l=>l.vals.filter(v=>v!=null)));
   const tr = S.pLog ? Math.log : (v=>v);
@@ -975,13 +994,13 @@ function drawPrice(){
   const padv=(tr(mx)-tr(mn))*0.06 || 1;
   const lo=tr(mn)-padv, hi=tr(mx)+padv;
   const x = i => pad.l + i*(W-pad.l-pad.r)/(n-1);
-  const y = v => pad.t + (hi-tr(v))/(hi-lo)*(H-pad.t-pad.b);
-  const inv = yy => { const q = hi-(yy-pad.t)/(H-pad.t-pad.b)*(hi-lo); return S.pLog?Math.exp(q):q; };
+  const y = v => pad.t + (hi-tr(v))/(hi-lo)*(pb-pad.t);
+  const inv = yy => { const q = hi-(yy-pad.t)/(pb-pad.t)*(hi-lo); return S.pLog?Math.exp(q):q; };
 
   g.strokeStyle = rule; g.lineWidth=1;
   g.font = '400 20px '+css.getPropertyValue('--mono');
   for(let k=0;k<=4;k++){
-    const yy = pad.t + k*(H-pad.t-pad.b)/4;
+    const yy = pad.t + k*(pb-pad.t)/4;
     g.beginPath(); g.moveTo(pad.l,yy); g.lineTo(W-pad.r,yy); g.stroke();
     const v = inv(yy);
     g.fillStyle = dim;
@@ -998,6 +1017,25 @@ function drawPrice(){
   g.beginPath();
   for(let i=0;i<n;i++) i?g.lineTo(x(i),y(vis[i])):g.moveTo(x(i),y(vis[i]));
   g.strokeStyle = ink; g.lineWidth=2.5; g.stroke();
+
+  if(dlines.length){
+    const dTop = pb + dGap, dBot = H - pad.b, dMid = (dTop+dBot)/2;
+    let amp = 0;
+    dlines.forEach(l=>l.vals.forEach(q=>{ if(q!=null && isFinite(q)) amp = Math.max(amp, Math.abs(q)); }));
+    amp = amp || 1;
+    const dy = q => dMid - (q/amp)*((dBot-dTop)/2 - 4);
+    g.strokeStyle = rule; g.lineWidth=1;
+    g.beginPath(); g.moveTo(pad.l,dMid); g.lineTo(W-pad.r,dMid); g.stroke();
+    dlines.forEach(l=>{
+      g.beginPath(); let st=false;
+      for(let i=0;i<n;i++){ const q=l.vals[i]; if(q==null||!isFinite(q)) continue;
+        st ? g.lineTo(x(i),dy(q)) : (g.moveTo(x(i),dy(q)), st=true); }
+      g.strokeStyle = l.color; g.lineWidth=2; g.stroke();
+    });
+    g.fillStyle = dim;
+    g.fillText('±'+amp.toFixed(amp<1?2:1)+'%', W-pad.r+10, dTop+16);
+    g.fillText('0', W-pad.r+10, dMid+7);
+  }
 
   const fd = ms => { const d=new Date(ms);
     return S.pInt==='1w' || S.pDays==='max' || S.pDays>400
@@ -1033,10 +1071,17 @@ function drawPrice(){
   const head = `<div class="rhead">${cursor==null?'последна свещ':'при маркера'} · ${when} · ${fmt(vis[at], vis[at]<10?4:2)}`
     + (zoomed ? ` · показани ${n} от ${N} свещи <a href="#" id="z-reset" style="color:var(--short)">нулирай</a>` : '')
     + `</div>`;
-  read.innerHTML = head + (lines.length ? lines.map(l=>{
+  const PERBAR = {'1d':'на ден','1w':'на седмица','4h':'на 4 часа'};
+  read.innerHTML = head + (allL.length ? allL.map(l=>{
     const v = l.vals[at];
     if(v==null) return `<div class="venue"><span class="name" style="color:${l.color}">${l.label}</span>
       <span style="color:var(--ink-dim);font-size:13px">${l.missing?'няма данни':'няма достатъчно история'}</span><span class="val">—</span></div>`;
+    if(l.deriv){
+      const what = l.deriv===1 ? 'наклон' : 'ускорение';
+      return `<div class="venue"><span class="name" style="color:${l.color}">${l.label}</span>
+        <span style="color:var(--ink-dim);font-size:13px">${what} ${PERBAR[l.u]||''}</span>
+        <span class="val ${v>=0?'pos':'neg'}">${pct(v)}</span></div>`;
+    }
     const q = (vis[at]/v-1)*100;
     return `<div class="venue"><span class="name" style="color:${l.color}">${l.label}</span>
       <span style="color:var(--ink-dim);font-size:13px">${fmt(v, v<10?4:2)} · ${q>=0?'над':'под'}</span>
@@ -1058,7 +1103,7 @@ function renderOC(){
 function renderChips(){
   document.getElementById('ma-chips').innerHTML = S.mas.map((m,i)=>
     `<button data-ma="${i}" aria-pressed="${m.on}">
-       <i style="background:${MA_COLORS[i%MA_COLORS.length]}"></i>${m.t.toUpperCase()} ${m.n}${UNIT[m.u]}${(m.k&&m.k!==1)?' ×'+m.k:''}
+       <i style="background:${MA_COLORS[i%MA_COLORS.length]}"></i>${m.t.toUpperCase()} ${m.n}${UNIT[m.u]}${(m.k&&m.k!==1)?' ×'+m.k:''}${m.d===1?' ′':m.d===2?' ″':''}
        <span class="rm" data-rm="${i}">×</span></button>`).join('');
 }
 
@@ -1180,8 +1225,11 @@ document.getElementById('ma-add').addEventListener('click', ()=>{
   const u = document.getElementById('ma-unit').value;
   const el = document.getElementById('ma-len'), n = parseInt(el.value,10);
   if(!n || n<2 || n>400) return;
-  const mk = parseFloat(document.getElementById('ma-mult').value) || 1;
-  if(!S.mas.some(m=>m.t===t && m.n===n && m.u===u && (m.k||1)===mk)) S.mas.push({t,n,u,k:mk,on:true});
+  const mkRaw = document.getElementById('ma-mult').value.replace(',', '.').trim();
+  const mk = Math.abs(parseFloat(mkRaw)) || 1;
+  const dv = +document.getElementById('ma-deriv').value || 0;
+  if(!S.mas.some(m=>m.t===t && m.n===n && m.u===u && (m.k||1)===mk && (m.d||0)===dv))
+    S.mas.push({t, n, u, k:mk, d:dv, on:true});
   el.value=''; document.getElementById('ma-mult').value=''; el.blur();
   renderChips(); loadPrice().catch(()=>drawPrice());
 });
