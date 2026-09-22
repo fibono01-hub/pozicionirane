@@ -108,6 +108,15 @@ canvas{width:100%;height:290px;display:block}
 .addma button{background:var(--ink);color:var(--ground);border:0;padding:8px 15px;border-radius:2px;font:inherit;font-weight:500;cursor:pointer}
 #ma-read .venue{grid-template-columns:96px 1fr 92px}
 #zchart{height:240px}
+#pgram{height:230px}
+#bpass{height:250px}
+.heatrow{display:flex;align-items:center;gap:3px;margin-bottom:3px}
+.heatrow b{width:26px;font-size:11px;color:var(--ink-dim);font-weight:400;font-family:var(--mono)}
+.heatrow span{flex:1;height:15px;border-radius:1px}
+.heathdr{display:flex;gap:3px;margin:6px 0 0 29px;font-size:9px;color:var(--ink-dim);font-family:var(--mono)}
+.heathdr span{flex:1;text-align:center}
+#pg-read,#bp-read{margin-top:12px;font-size:13px;color:var(--ink-dim);line-height:1.6;max-width:60ch}
+#pg-read b,#bp-read b{color:var(--ink);font-weight:500}
 .ind{margin-bottom:20px}
 .ind .head{display:flex;justify-content:space-between;align-items:baseline;font-size:14px;margin-bottom:7px}
 .ind .head b{font-family:var(--mono);font-weight:500;font-size:15px}
@@ -167,6 +176,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
   <button data-tab="pos" aria-pressed="true">Позициониране</button>
   <button data-tab="price" aria-pressed="false">Цена</button>
   <button data-tab="ind" aria-pressed="false">Индикатори</button>
+  <button data-tab="spec" aria-pressed="false">Спектър</button>
 </div>
 
 <div class="controls" id="symbols">
@@ -276,9 +286,18 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
   <div class="chips" id="oc-chips"></div>
 
   <h2>Плъзгащи средни</h2>
+  <p style="font-size:12px;color:var(--ink-dim);line-height:1.55;max-width:58ch;margin-bottom:14px">
+    <b style="color:var(--ink);font-weight:500">AMA</b> мени теглото според ефективността на движението — лепне за цената при тренд, почти замръзва при зигзаг.
+    <b style="color:var(--ink);font-weight:500">AB филтърът</b> следи едновременно нивото и скоростта и екстраполира с нея, затова завива по-рано от EMA, но презвънява след резки движения.
+  </p>
   <div class="chips" id="ma-chips"></div>
   <div class="addma">
-    <select id="ma-type"><option value="sma">SMA</option><option value="ema">EMA</option></select>
+    <select id="ma-type">
+      <option value="sma">SMA</option>
+      <option value="ema">EMA</option>
+      <option value="ama">AMA</option>
+      <option value="ab">AB филтър</option>
+    </select>
     <input id="ma-len" type="number" inputmode="numeric" min="2" max="400" placeholder="период">
     <select id="ma-unit">
       <option value="1d">дни</option>
@@ -329,8 +348,46 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
   </section>
 </div>
 
+<div id="tab-spec" hidden>
+  <section>
+    <h2>Периодограма — <em>върху дневни доходности</em></h2>
+    <canvas id="pgram" width="1400" height="420"></canvas>
+    <div class="legend">
+      <span><i style="background:var(--ink)"></i>наблюдавана мощност</span>
+      <span><i style="background:var(--hot)"></i>праг 95% спрямо червен шум</span>
+    </div>
+    <div id="pg-read"></div>
+  </section>
+
+  <section>
+    <h2>Сезонност — <em>по час и ден, UTC</em></h2>
+    <div class="controls" id="se-metric">
+      <button data-se="vol" aria-pressed="true">Волатилност</button>
+      <button data-se="ret" aria-pressed="false">Среден ход</button>
+      <button data-se="qv" aria-pressed="false">Оборот</button>
+    </div>
+    <div id="heat"></div>
+  </section>
+
+  <section>
+    <h2>Лентов филтър</h2>
+    <div class="addma">
+      <input id="bp-lo" type="text" inputmode="numeric" placeholder="от дни" value="20">
+      <input id="bp-hi" type="text" inputmode="numeric" placeholder="до дни" value="200">
+      <button id="bp-go">Приложи</button>
+    </div>
+    <canvas id="bpass" width="1400" height="460"></canvas>
+    <div class="legend">
+      <span><i style="background:var(--ink-dim)"></i>цена, лог</span>
+      <span><i style="background:var(--ink)"></i>изолиран цикъл</span>
+      <span><i style="background:var(--hot);height:9px"></i>ненадеждна зона</span>
+    </div>
+    <div id="bp-read"></div>
+  </section>
+</div>
+
 <footer>
-  <span style="font-family:var(--mono);color:var(--ink)">версия 13</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
+  <span style="font-family:var(--mono);color:var(--ink)">версия 15</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
   Фъндингът и откритият интерес идват от публичните API-та на Binance, Bybit, OKX и Hyperliquid.
   Ако някоя борса покаже грешка, най-честата причина е блокиране по регион или ограничение на заявките — изчакай минута и обнови.
 </footer>
@@ -871,6 +928,48 @@ function ema(a,n){
   for(let i=n;i<a.length;i++){ prev=a[i]*k+prev*(1-k); out[i]=prev; }
   return out;
 }
+// Kaufman AMA: теглото зависи от ефективността на движението
+function kama(a, n){
+  const fast = 2/3, slow = 2/31;          // еквивалент на EMA 2 и EMA 30
+  const out = new Array(a.length).fill(null);
+  let prev = null;
+  for(let i=0;i<a.length;i++){
+    if(i < n){
+      if(i === n-1){ prev = a.slice(0,n).reduce((x,y)=>x+y,0)/n; out[i] = prev; }
+      continue;
+    }
+    const change = Math.abs(a[i]-a[i-n]);
+    let vol = 0;
+    for(let q=i-n+1; q<=i; q++) vol += Math.abs(a[q]-a[q-1]);
+    const er = vol ? change/vol : 0;                 // 1 = права линия, 0 = чист зигзаг
+    const sc = Math.pow(er*(fast-slow)+slow, 2);
+    prev = prev + sc*(a[i]-prev);
+    out[i] = prev;
+  }
+  return out;
+}
+
+// алфа-бета филтър: следи ниво И скорост, затова изпреварва обикновената EMA
+function abfilt(a, n){
+  const alpha = 2/(n+1), beta = alpha*alpha/(2-alpha);
+  const out = new Array(a.length).fill(null);
+  let lvl = null, vel = 0;
+  for(let i=0;i<a.length;i++){
+    if(lvl === null){
+      if(i >= n-1){ lvl = a.slice(i-n+1,i+1).reduce((x,y)=>x+y,0)/n; vel = 0; out[i] = lvl; }
+      continue;
+    }
+    const pred = lvl + vel;                 // екстраполация с текущата скорост
+    const err  = a[i] - pred;
+    lvl = pred + alpha*err;
+    vel = vel  + beta*err;
+    out[i] = lvl;
+  }
+  return out;
+}
+
+const MAFN = { sma, ema, ama:kama, ab:abfilt };
+
 // пренася средна от собствената ѝ времева рамка върху свещите на графиката
 function alignMA(rt, rv, ct){
   const out=[]; let j=0;
@@ -948,7 +1047,7 @@ function activeMAs(){
   return S.mas.map((m,i)=>({m, i})).filter(o=>o.m.on).map(({m,i})=>{
     const src = refFor(m.u);
     const k = m.k || 1, dv = m.d || 0;
-    let raw = src ? (m.t==='sma'?sma:ema)(src.c, m.n).map(v=>v==null?null:v*k) : null;
+    let raw = src ? (MAFN[m.t]||sma)(src.c, m.n).map(v=>v==null?null:v*k) : null;
     if(raw && dv>0){
       // първа производна: процентна промяна за един интервал на самата средна
       let d1 = raw.map((v,q)=> (q===0||v==null||raw[q-1]==null||raw[q-1]===0) ? null : (v/raw[q-1]-1)*100);
@@ -957,7 +1056,8 @@ function activeMAs(){
     }
     const vals = raw ? alignMA(src.t, raw, price.t) : new Array(price.t.length).fill(null);
     const dm = dv===1 ? ' ′' : dv===2 ? ' ″' : '';
-    return { ...m, deriv:dv, label:`${m.t.toUpperCase()} ${m.n}${UNIT[m.u]}${(k!==1)?' ×'+k:''}${dm}`,
+    const TN = {sma:'SMA', ema:'EMA', ama:'AMA', ab:'AB'};
+    return { ...m, deriv:dv, label:`${TN[m.t]||m.t} ${m.n}${UNIT[m.u]}${(k!==1)?' ×'+k:''}${dm}`,
              color: MA_COLORS[i % MA_COLORS.length], vals, missing: !src };
   }).concat(activeLevels());
 }
@@ -1103,7 +1203,7 @@ function renderOC(){
 function renderChips(){
   document.getElementById('ma-chips').innerHTML = S.mas.map((m,i)=>
     `<button data-ma="${i}" aria-pressed="${m.on}">
-       <i style="background:${MA_COLORS[i%MA_COLORS.length]}"></i>${m.t.toUpperCase()} ${m.n}${UNIT[m.u]}${(m.k&&m.k!==1)?' ×'+m.k:''}${m.d===1?' ′':m.d===2?' ″':''}
+       <i style="background:${MA_COLORS[i%MA_COLORS.length]}"></i>${({sma:'SMA',ema:'EMA',ama:'AMA',ab:'AB'})[m.t]||m.t} ${m.n}${UNIT[m.u]}${(m.k&&m.k!==1)?' ×'+m.k:''}${m.d===1?' ′':m.d===2?' ″':''}
        <span class="rm" data-rm="${i}">×</span></button>`).join('');
 }
 
@@ -1179,6 +1279,8 @@ document.getElementById('tabs').addEventListener('click', e=>{
   document.getElementById('tab-pos').hidden   = S.tab!=='pos';
   document.getElementById('tab-price').hidden = S.tab!=='price';
   document.getElementById('tab-ind').hidden   = S.tab!=='ind';
+  document.getElementById('tab-spec').hidden  = S.tab!=='spec';
+  if(S.tab==='spec') loadSpec().catch(()=>{});
   if(S.tab==='price'){ renderChips(); renderOC(); loadPrice().catch(()=>{}); }
   if(S.tab==='ind') loadInd();
 });
@@ -1634,6 +1736,289 @@ document.getElementById('i-int').addEventListener('click', e=>{
   loadInd();
 });
 
+/* ---------------- спектрален анализ ---------------- */
+function fft(re, im){
+  const n = re.length;
+  for(let i=1, j=0; i<n; i++){
+    let bit = n>>1;
+    for(; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if(i<j){ let t=re[i]; re[i]=re[j]; re[j]=t; t=im[i]; im[i]=im[j]; im[j]=t; }
+  }
+  for(let len=2; len<=n; len<<=1){
+    const ang = -2*Math.PI/len, wr = Math.cos(ang), wi = Math.sin(ang);
+    for(let i=0;i<n;i+=len){
+      let cr=1, ci=0;
+      for(let k=0;k<len/2;k++){
+        const ur=re[i+k], ui=im[i+k];
+        const vr=re[i+k+len/2]*cr - im[i+k+len/2]*ci;
+        const vi=re[i+k+len/2]*ci + im[i+k+len/2]*cr;
+        re[i+k]=ur+vr; im[i+k]=ui+vi;
+        re[i+k+len/2]=ur-vr; im[i+k+len/2]=ui-vi;
+        const nr=cr*wr-ci*wi; ci=cr*wi+ci*wr; cr=nr;
+      }
+    }
+  }
+}
+function ifft(re, im){
+  for(let i=0;i<im.length;i++) im[i] = -im[i];
+  fft(re, im);
+  const n = re.length;
+  for(let i=0;i<n;i++){ re[i] /= n; im[i] = -im[i]/n; }
+}
+const pow2 = k => { let n=1; while(n<k) n<<=1; return n; };
+
+let spec = null;   // дневната серия, върху която работи табът
+
+async function loadSpec(){
+  // предпочита пълната история от Coin Metrics, иначе дневни свещи от Binance
+  let t=[], c=[];
+  if(chain && chain.sym===S.sym && chain.all && chain.all.px){
+    chain.all.t.forEach((tt,i)=>{ const v=chain.all.px[i]; if(v!=null&&v>0){ t.push(tt); c.push(v); } });
+  }
+  if(c.length < 300){
+    try{ const d = await klines('1d', 1000); t=d.t; c=d.c; }catch(e){}
+  }
+  spec = {t, c};
+  drawPgram(); drawBandpass();
+  loadHeat().catch(()=>{});
+}
+
+/* --- периодограма с праг спрямо червен шум --- */
+function drawPgram(){
+  const cv = document.getElementById('pgram'), g = cv.getContext('2d');
+  const W=cv.width, H=cv.height, pad={l:8,r:64,t:14,b:30};
+  g.clearRect(0,0,W,H);
+  const read = document.getElementById('pg-read');
+  if(!spec || spec.c.length<200){ read.innerHTML='Няма достатъчно история.'; return; }
+
+  // логаритмични доходности, без средна, с прозорец на Хан
+  const r = [];
+  for(let i=1;i<spec.c.length;i++) r.push(Math.log(spec.c[i]/spec.c[i-1]));
+  const mean = r.reduce((a,b)=>a+b,0)/r.length;
+  const x = r.map(v=>v-mean);
+
+  // коефициент на AR(1) за нулевата хипотеза
+  let num=0, den=0;
+  for(let i=1;i<x.length;i++){ num += x[i]*x[i-1]; }
+  for(let i=0;i<x.length;i++){ den += x[i]*x[i]; }
+  const r1 = Math.max(0, Math.min(0.99, num/den));
+
+  const N = pow2(x.length);
+  const w = i => 0.5 - 0.5*Math.cos(2*Math.PI*i/(x.length-1));
+  const re = new Array(N).fill(0), im = new Array(N).fill(0);
+  let wss = 0;
+  for(let i=0;i<x.length;i++){ const ww=w(i); re[i]=x[i]*ww; wss += ww*ww; }
+  fft(re, im);
+
+  const half = N/2;
+  const P = [], per = [];
+  for(let k=1;k<half;k++){
+    P.push((re[k]*re[k]+im[k]*im[k])/wss);
+    per.push(N/k);                       // период в дни
+  }
+  const avgP = P.reduce((a,b)=>a+b,0)/P.length;
+
+  // теоретичен спектър на червен шум, нормиран към средната мощност
+  const rn = per.map(pp=>{
+    const f = 1/pp;
+    return (1-r1*r1)/(1 - 2*r1*Math.cos(2*Math.PI*f) + r1*r1);
+  });
+  const rnAvg = rn.reduce((a,b)=>a+b,0)/rn.length;
+  const thr = rn.map(v => v/rnAvg*avgP*2.996);   // 95% при хи-квадрат с 2 степени
+
+  // показваме периоди между 3 дни и една трета от историята
+  const lim = [3, Math.max(20, x.length/3)];
+  const idx = per.map((pp,i)=>i).filter(i=>per[i]>=lim[0] && per[i]<=lim[1]);
+  if(!idx.length){ read.innerHTML='Няма достатъчно история.'; return; }
+
+  const css = getComputedStyle(document.documentElement);
+  const dim=css.getPropertyValue('--ink-dim').trim(), rule=css.getPropertyValue('--rule').trim();
+  const ink=css.getPropertyValue('--ink').trim(), hot=css.getPropertyValue('--hot').trim();
+
+  const lx = i => Math.log(per[i]);
+  const x0 = Math.log(lim[0]), x1 = Math.log(lim[1]);
+  const px = i => pad.l + (lx(i)-x0)/(x1-x0)*(W-pad.l-pad.r);
+  const maxP = Math.max(...idx.map(i=>Math.max(P[i], thr[i])));
+  const py = v => pad.t + (1 - v/maxP)*(H-pad.t-pad.b);
+
+  g.strokeStyle = rule; g.lineWidth=1;
+  g.font = '400 19px '+css.getPropertyValue('--mono'); g.fillStyle = dim;
+  [7,14,30,60,90,180,365,730].filter(q=>q>=lim[0]&&q<=lim[1]).forEach(q=>{
+    const xx = pad.l + (Math.log(q)-x0)/(x1-x0)*(W-pad.l-pad.r);
+    g.beginPath(); g.moveTo(xx,pad.t); g.lineTo(xx,H-pad.b); g.stroke();
+    g.fillText(q+'д', xx+4, H-8);
+  });
+
+  g.beginPath();
+  idx.forEach((i,k)=> k?g.lineTo(px(i),py(thr[i])):g.moveTo(px(i),py(thr[i])));
+  g.strokeStyle = hot; g.lineWidth=2; g.setLineDash([7,5]); g.stroke(); g.setLineDash([]);
+
+  g.beginPath();
+  idx.forEach((i,k)=> k?g.lineTo(px(i),py(P[i])):g.moveTo(px(i),py(P[i])));
+  g.strokeStyle = ink; g.lineWidth=2; g.stroke();
+
+  // кои пикове минават прага
+  const hits = idx.filter(i=>P[i]>thr[i])
+                  .sort((a,b)=>(P[b]/thr[b])-(P[a]/thr[a])).slice(0,4);
+  read.innerHTML = `AR(1) коефициент <b>${fmt(r1,3)}</b> върху ${x.length} дни. `
+    + (hits.length
+        ? `Над прага са: ${hits.map(i=>`<b>${fmt(per[i],0)} дни</b>`).join(', ')}. При толкова проверени честоти няколко случайни преминавания са очаквани — приемай ги за хипотеза, не за открит цикъл.`
+        : `Нито един период не минава прага на 95%. Това е обичайният резултат при ценови редове и означава, че доходностите не се различават съществено от червен шум.`);
+}
+
+/* --- сезонност по час и ден --- */
+async function loadHeat(){
+  const box = document.getElementById('heat');
+  box.innerHTML = '<div class="empty">Зарежда…</div>';
+  try{
+    let all = [];
+    let end = Date.now();
+    for(let page=0; page<3; page++){
+      const kl = await j(`${spotBase}/api/v3/klines?symbol=${S.sym}USDT&interval=1h&limit=1000&endTime=${end}`);
+      if(!kl.length) break;
+      all = kl.concat(all);
+      end = kl[0][0] - 1;
+    }
+    heatData = all.map(k=>({
+      t: k[0],
+      ret: (parseFloat(k[4])/parseFloat(k[1])-1)*100,
+      qv: parseFloat(k[7])
+    }));
+    drawHeat();
+  }catch(e){ box.innerHTML = '<div class="empty">Няма достъп до часовите данни.</div>'; }
+}
+
+let heatData = null;
+let heatMode = 'vol';
+
+function drawHeat(){
+  const box = document.getElementById('heat');
+  if(!heatData || !heatData.length){ box.innerHTML='<div class="empty">Няма данни.</div>'; return; }
+  const DAYS = ['Нд','Пн','Вт','Ср','Чт','Пт','Сб'];
+  const sum = {}, cnt = {};
+  heatData.forEach(d=>{
+    const dt = new Date(d.t);
+    const key = dt.getUTCDay()+':'+dt.getUTCHours();
+    const v = heatMode==='vol' ? Math.abs(d.ret) : heatMode==='ret' ? d.ret : d.qv;
+    sum[key] = (sum[key]||0)+v; cnt[key] = (cnt[key]||0)+1;
+  });
+  const cells = {};
+  Object.keys(sum).forEach(k=> cells[k] = sum[k]/cnt[k]);
+  const vals = Object.values(cells);
+  const mn = Math.min(...vals), mx = Math.max(...vals);
+
+  const css = getComputedStyle(document.documentElement);
+  const A = css.getPropertyValue('--long').trim(), T = css.getPropertyValue('--short').trim();
+  const panel = css.getPropertyValue('--panel').trim();
+
+  let html = '';
+  for(let d=1; d<=7; d++){
+    const day = d%7;
+    html += `<div class="heatrow"><b>${DAYS[day]}</b>`;
+    for(let h=0; h<24; h++){
+      const v = cells[day+':'+h];
+      let bg = panel, op = 1;
+      if(v!=null){
+        if(heatMode==='ret'){
+          const m = Math.max(Math.abs(mn), Math.abs(mx)) || 1;
+          bg = v>=0 ? A : T; op = 0.18 + Math.abs(v)/m*0.82;
+        } else {
+          bg = A; op = 0.12 + (v-mn)/((mx-mn)||1)*0.88;
+        }
+      }
+      html += `<span style="background:${bg};opacity:${op.toFixed(2)}" title="${DAYS[day]} ${h}:00"></span>`;
+    }
+    html += '</div>';
+  }
+  html += '<div class="heathdr">' + [0,3,6,9,12,15,18,21].map(h=>`<span>${h}</span>`).join('') + '</div>';
+  const n = heatData.length;
+  html += `<p style="font-size:12px;color:var(--ink-dim);margin-top:12px;line-height:1.55;max-width:58ch">
+    ${Math.round(n/24)} дни часови данни. Часовете са UTC. Изплащанията на фъндинг са в 00, 08 и 16 UTC —
+    ако видиш ивици точно там, това е ритъмът на дериватите, а не на спот пазара.</p>`;
+  box.innerHTML = html;
+}
+
+/* --- лентов филтър --- */
+function drawBandpass(){
+  const cv = document.getElementById('bpass'), g = cv.getContext('2d');
+  const W=cv.width, H=cv.height, pad={l:8,r:64,t:14,b:26};
+  g.clearRect(0,0,W,H);
+  const read = document.getElementById('bp-read');
+  if(!spec || spec.c.length<200){ read.innerHTML='Няма достатъчно история.'; return; }
+
+  const lo = Math.max(3, parseInt(document.getElementById('bp-lo').value,10)||20);
+  const hi = Math.max(lo+1, parseInt(document.getElementById('bp-hi').value,10)||200);
+
+  const lp = spec.c.map(Math.log);
+  const M = lp.length;
+  // премахване на линейния тренд
+  const xs = lp.map((_,i)=>i);
+  const mx = (M-1)/2, my = lp.reduce((a,b)=>a+b,0)/M;
+  let sxy=0, sxx=0;
+  for(let i=0;i<M;i++){ sxy += (xs[i]-mx)*(lp[i]-my); sxx += (xs[i]-mx)**2; }
+  const slope = sxy/sxx;
+  const det = lp.map((v,i)=> v - (my + slope*(i-mx)));
+
+  const N = pow2(M);
+  const re = new Array(N).fill(0), im = new Array(N).fill(0);
+  for(let i=0;i<M;i++) re[i] = det[i];
+  fft(re, im);
+  for(let k=0;k<N;k++){
+    const kk = k<=N/2 ? k : N-k;
+    const period = kk===0 ? Infinity : N/kk;
+    if(!(period>=lo && period<=hi)){ re[k]=0; im[k]=0; }
+  }
+  ifft(re, im);
+  const cyc = re.slice(0, M);
+
+  const css = getComputedStyle(document.documentElement);
+  const dim=css.getPropertyValue('--ink-dim').trim(), rule=css.getPropertyValue('--rule').trim();
+  const ink=css.getPropertyValue('--ink').trim(), hot=css.getPropertyValue('--hot').trim();
+
+  const topH = H*0.45, botT = topH+16;
+  const x = i => pad.l + i*(W-pad.l-pad.r)/(M-1);
+  const pmn=Math.min(...lp), pmx=Math.max(...lp);
+  const py = v => pad.t + (pmx-v)/((pmx-pmn)||1)*(topH-pad.t);
+  const amp = Math.max(...cyc.map(Math.abs))||1;
+  const cy = v => (botT+H-pad.b)/2 - v/amp*((H-pad.b-botT)/2 - 4);
+
+  // зона, в която филтърът е ненадежден: половин дълъг период от края
+  const bad = Math.min(M-1, Math.round(hi/2));
+  g.fillStyle = hot+'1E';
+  g.fillRect(x(M-1-bad), pad.t, x(M-1)-x(M-1-bad), H-pad.b-pad.t);
+
+  g.strokeStyle = rule; g.lineWidth=1;
+  g.beginPath(); g.moveTo(pad.l,(botT+H-pad.b)/2); g.lineTo(W-pad.r,(botT+H-pad.b)/2); g.stroke();
+
+  g.beginPath();
+  for(let i=0;i<M;i++) i?g.lineTo(x(i),py(lp[i])):g.moveTo(x(i),py(lp[i]));
+  g.strokeStyle = dim; g.lineWidth=1.5; g.stroke();
+
+  g.beginPath();
+  for(let i=0;i<M;i++) i?g.lineTo(x(i),cy(cyc[i])):g.moveTo(x(i),cy(cyc[i]));
+  g.strokeStyle = ink; g.lineWidth=2; g.stroke();
+
+  g.font = '400 19px '+css.getPropertyValue('--mono'); g.fillStyle = dim;
+  g.fillText(new Date(spec.t[0]).getFullYear(), pad.l, H-6);
+  const tx = String(new Date(spec.t[M-1]).getFullYear());
+  g.fillText(tx, W-pad.r-g.measureText(tx).width, H-6);
+
+  const last = cyc[M-1], prev = cyc[M-2];
+  read.innerHTML = `Задържани са периоди между <b>${lo}</b> и <b>${hi}</b> дни. `
+    + `Изолираната компонента е <b>${last>=0?'над':'под'}</b> нулата и `
+    + `${last>prev?'се покачва':'спада'}. `
+    + `Последните ${bad} дни са в защрихованата зона — там реконструкцията се преначертава с всяка нова свещ и не бива да се ползва за решения.`;
+}
+
+document.getElementById('se-metric').addEventListener('click', e=>{
+  const b = e.target.closest('button[data-se]'); if(!b) return;
+  heatMode = b.dataset.se;
+  document.querySelectorAll('#se-metric button').forEach(x=>x.setAttribute('aria-pressed', x===b));
+  drawHeat();
+});
+document.getElementById('bp-go').addEventListener('click', drawBandpass);
+
 /* ---------------- оркестрация ---------------- */
 async function refresh(){
   document.body.classList.add('loading');
@@ -1661,6 +2046,7 @@ document.getElementById('symbols').addEventListener('click', e=>{
   document.querySelectorAll('#symbols button[data-sym]').forEach(x=>x.setAttribute('aria-pressed', x===b));
   if(S.tab==='price') loadPrice().catch(()=>{});
   if(S.tab==='ind') loadInd();
+  if(S.tab==='spec') loadSpec().catch(()=>{});
   refresh();
 });
 document.getElementById('ranges').addEventListener('click', e=>{
