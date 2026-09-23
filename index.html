@@ -112,6 +112,7 @@ canvas{width:100%;height:290px;display:block;
 #zchart{height:240px}
 #pgram{height:230px}
 #bpass{height:250px}
+#etfchart{height:260px}
 .heatrow{display:flex;align-items:center;gap:3px;margin-bottom:3px}
 .heatrow b{width:26px;font-size:11px;color:var(--ink-dim);font-weight:400;font-family:var(--mono)}
 .heatrow span{flex:1;height:15px;border-radius:1px}
@@ -179,6 +180,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
   <button data-tab="price" aria-pressed="false">Цена</button>
   <button data-tab="ind" aria-pressed="false">Индикатори</button>
   <button data-tab="spec" aria-pressed="false">Спектър</button>
+  <button data-tab="etf" aria-pressed="false">ETF</button>
 </div>
 
 <div class="controls" id="symbols">
@@ -264,7 +266,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
     <button data-int="1d" aria-pressed="false">Дневно</button>
     <button data-int="1w" aria-pressed="true">Седмично</button>
     <button id="p-log" aria-pressed="false">Лог</button>
-    <button id="p-pan" aria-pressed="false">Плъзгане</button>
+    <button id="p-cur" aria-pressed="false">Маркер</button>
   </div>
 
   <canvas id="pchart" width="1400" height="640"></canvas>
@@ -392,8 +394,46 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
   </section>
 </div>
 
+<div id="tab-etf" hidden>
+  <div class="controls" id="etf-asset">
+    <button data-ea="BTC" aria-pressed="true">BTC</button>
+    <button data-ea="ETH" aria-pressed="false">ETH</button>
+    <button data-ea="SOL" aria-pressed="false">SOL</button>
+  </div>
+
+  <div id="etf-stats" class="stats"></div>
+  <canvas id="etfchart" width="1400" height="480"></canvas>
+  <div class="legend">
+    <span><i style="background:var(--long);height:9px"></i>приток</span>
+    <span><i style="background:var(--short);height:9px"></i>отлив</span>
+    <span><i style="background:var(--ink)"></i>кумулативно</span>
+  </div>
+
+  <div class="controls" id="etf-range" style="margin-top:14px">
+    <button data-er="30">30 дни</button>
+    <button data-er="90" aria-pressed="true">90 дни</button>
+    <button data-er="365">1 г</button>
+    <button data-er="max">Макс</button>
+  </div>
+
+  <section style="margin-top:26px">
+    <h2>Последни дни</h2>
+    <div id="etf-table"></div>
+  </section>
+
+  <p style="font-size:12px;color:var(--ink-dim);line-height:1.6;max-width:60ch">
+    Всеки долар нетен приток е реална покупка на спот пазара, защото спот ETF-ите държат самия актив.
+    Затова потоците са по-близо до истинско търсене, отколкото обемът на дериватите.
+    Отчитат се само завършени борсови дни в САЩ — събота, неделя и празници нямат ред, а текущият ден е
+    предварителен, докато емитентите не приключат сетълмента.
+  </p>
+  <p style="font-size:12px;color:var(--ink-dim);max-width:60ch">
+    Данни: <a href="https://bykaranteli.com/etf" style="color:var(--short)">ByKaranteli</a>, безплатен набор за лична и изследователска употреба.
+  </p>
+</div>
+
 <footer>
-  <span style="font-family:var(--mono);color:var(--ink)">версия 17</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
+  <span style="font-family:var(--mono);color:var(--ink)">версия 18</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
   Фъндингът и откритият интерес идват от публичните API-та на Binance, Bybit, OKX и Hyperliquid.
   Ако някоя борса покаже грешка, най-честата причина е блокиране по регион или ограничение на заявките — изчакай минута и обнови.
 </footer>
@@ -921,6 +961,7 @@ Object.assign(S, { oc:{realized:true, delta:false, top:false} });
 Object.assign(S, { tab:'pos', pInt:'1w', pDays:'max', pLog:false, mas:[
   {t:'sma', n:111, u:'1d', k:1, on:true},
   {t:'sma', n:350, u:'1d', k:2, on:true},
+  {t:'sma', n:50,  u:'1w', k:1, on:true},
   {t:'sma', n:200, u:'1w', k:1, on:true},
   {t:'ema', n:200, u:'1d', k:1, on:true},
   {t:'ema', n:21,  u:'1w', k:1, on:true},
@@ -1228,7 +1269,7 @@ function renderChips(){
 }
 
 /* --- маркер, плъзгане и увеличение --- */
-S.panMode = false;
+S.panMode = true;   // плъзгането е основното; маркерът е на бутон
 (function(){
   const c = document.getElementById('pchart');
   const PL=8, PR=100;
@@ -1334,7 +1375,15 @@ document.getElementById('tabs').addEventListener('click', e=>{
   document.getElementById('tab-price').hidden = S.tab!=='price';
   document.getElementById('tab-ind').hidden   = S.tab!=='ind';
   document.getElementById('tab-spec').hidden  = S.tab!=='spec';
+  document.getElementById('tab-etf').hidden   = S.tab!=='etf';
   if(S.tab==='spec') loadSpec().catch(()=>{});
+  if(S.tab==='etf'){
+    if(['BTC','ETH','SOL'].includes(S.sym)){
+      S.etfAsset = S.sym;
+      document.querySelectorAll('#etf-asset button').forEach(x=>x.setAttribute('aria-pressed', x.dataset.ea===S.sym));
+    }
+    if(!etf) loadEtf(); else drawEtf();
+  }
   if(S.tab==='price'){ renderChips(); renderOC(); loadPrice().catch(()=>{}); }
   if(S.tab==='ind') loadInd();
 });
@@ -1346,8 +1395,8 @@ document.getElementById('p-int').addEventListener('click', e=>{
     loadPrice().catch(()=>{}); return;
   }
   if(e.target.id==='p-log'){ S.pLog=!S.pLog; e.target.setAttribute('aria-pressed', S.pLog); drawPrice(); }
-  if(e.target.id==='p-pan'){
-    S.panMode=!S.panMode; e.target.setAttribute('aria-pressed', S.panMode);
+  if(e.target.id==='p-cur'){
+    S.panMode=!S.panMode; e.target.setAttribute('aria-pressed', !S.panMode);
     if(S.panMode){ cursor=null; drawPrice(); }
   }
 });
@@ -2076,6 +2125,156 @@ document.getElementById('se-metric').addEventListener('click', e=>{
   drawHeat();
 });
 document.getElementById('bp-go').addEventListener('click', drawBandpass);
+
+/* ---------------- ETF потоци ---------------- */
+let etf = null;
+S.etfAsset = 'BTC';
+S.etfRange = 90;
+
+// схемата на набора не е фиксирана, затова полетата се разпознават по име
+function pick(row, ...frags){
+  for(const k of Object.keys(row)){
+    const lk = k.toLowerCase().replace(/[^a-z]/g,'');
+    if(frags.some(f=>lk.includes(f))){
+      const v = row[k];
+      const n = typeof v==='number' ? v : parseFloat(String(v).replace(/[$,\s]/g,''));
+      if(isFinite(n)) return n;
+    }
+  }
+  return null;
+}
+function pickStr(row, ...frags){
+  for(const k of Object.keys(row)){
+    const lk = k.toLowerCase().replace(/[^a-z]/g,'');
+    if(frags.some(f=>lk.includes(f))) return String(row[k]);
+  }
+  return null;
+}
+
+async function loadEtf(){
+  const box = document.getElementById('etf-stats');
+  box.innerHTML = '<span style="color:var(--ink-dim);font-size:13px">Зарежда…</span>';
+  try{
+    const raw = await j('https://bykaranteli.com/api/v1/public/datasets/etf-flows.json');
+    const rows = Array.isArray(raw) ? raw : (raw.data || raw.rows || raw.records || []);
+    if(!rows.length) throw new Error('празен набор');
+
+    const byAsset = {};
+    rows.forEach(r=>{
+      const a = (pickStr(r,'asset','symbol','ticker','coin') || 'BTC').toUpperCase().replace(/[^A-Z]/g,'');
+      const ds = pickStr(r,'date','day','time');
+      if(!ds) return;
+      const t = new Date(ds).getTime();
+      if(!isFinite(t)) return;
+      const flow = pick(r,'netinflow','netflow','flow','inflow');
+      if(flow===null) return;
+      (byAsset[a] = byAsset[a] || []).push({
+        t, ds: ds.slice(0,10), flow,
+        assets: pick(r,'netassets','totalassets','aum'),
+        cum:    pick(r,'cumulative','cum'),
+        traded: pick(r,'valuetraded','volume','traded'),
+      });
+    });
+    Object.values(byAsset).forEach(v=>v.sort((x,y)=>x.t-y.t));
+    etf = byAsset;
+    drawEtf();
+  }catch(e){
+    box.innerHTML = `<span style="color:var(--hot);font-size:13px">Няма достъп до набора. Причина: ${e.message||e}</span>`;
+    document.getElementById('etf-table').innerHTML='';
+    const g = document.getElementById('etfchart').getContext('2d');
+    g.clearRect(0,0,1400,480);
+  }
+}
+
+function drawEtf(){
+  const box = document.getElementById('etf-stats'), tbl = document.getElementById('etf-table');
+  const cv = document.getElementById('etfchart'), g = cv.getContext('2d');
+  const W=cv.width, H=cv.height, pad={l:8,r:78,t:14,b:28};
+  g.clearRect(0,0,W,H);
+  if(!etf){ return; }
+
+  const all = etf[S.etfAsset];
+  if(!all || !all.length){
+    box.innerHTML = `<span style="color:var(--ink-dim);font-size:13px">Няма данни за ${S.etfAsset} в набора.</span>`;
+    tbl.innerHTML=''; return;
+  }
+  const d = S.etfRange==='max' ? all : all.slice(-S.etfRange);
+  const n = d.length;
+
+  const css = getComputedStyle(document.documentElement);
+  const dim=css.getPropertyValue('--ink-dim').trim(), rule=css.getPropertyValue('--rule').trim();
+  const ink=css.getPropertyValue('--ink').trim();
+  const A=css.getPropertyValue('--long').trim(), T=css.getPropertyValue('--short').trim();
+
+  // колони за дневния поток
+  const amp = Math.max(...d.map(r=>Math.abs(r.flow))) || 1;
+  const x = i => pad.l + (i+0.5)*(W-pad.l-pad.r)/n;
+  const mid = pad.t + (H-pad.t-pad.b)*0.42;
+  const barH = v => Math.abs(v)/amp * ((H-pad.t-pad.b)*0.4 - 4);
+  const bw = Math.max(1.5, (W-pad.l-pad.r)/n*0.68);
+
+  g.strokeStyle = rule; g.lineWidth=1;
+  g.beginPath(); g.moveTo(pad.l,mid); g.lineTo(W-pad.r,mid); g.stroke();
+  g.font = '400 19px '+css.getPropertyValue('--mono'); g.fillStyle = dim;
+  g.fillText('0', W-pad.r+10, mid+7);
+  g.fillText(usd(amp), W-pad.r+10, mid-barH(amp)+6);
+  g.fillText('-'+usd(amp), W-pad.r+10, mid+barH(amp)+6);
+
+  d.forEach((r,i)=>{
+    const h = barH(r.flow);
+    g.fillStyle = r.flow>=0 ? A : T;
+    g.fillRect(x(i)-bw/2, r.flow>=0 ? mid-h : mid, bw, Math.max(1,h));
+  });
+
+  // кумулативна линия в долната част
+  const cum = []; let run = 0;
+  d.forEach(r=>{ run += r.flow; cum.push(run); });
+  const cTop = pad.t + (H-pad.t-pad.b)*0.84, cBot = H-pad.b;
+  const cmn = Math.min(0,...cum), cmx = Math.max(0,...cum);
+  const cy = v => cBot - (v-cmn)/((cmx-cmn)||1)*(cBot-cTop);
+  g.beginPath();
+  cum.forEach((v,i)=> i?g.lineTo(x(i),cy(v)):g.moveTo(x(i),cy(v)));
+  g.strokeStyle = ink; g.lineWidth=2; g.stroke();
+  g.fillStyle = dim;
+  g.fillText(usd(cum[cum.length-1]), W-pad.r+10, cy(cum[cum.length-1])+6);
+
+  g.fillText(d[0].ds.slice(5), pad.l, H-8);
+  const tx = d[n-1].ds.slice(5);
+  g.fillText(tx, W-pad.r-g.measureText(tx).width, H-8);
+
+  // числа
+  const sum = k => d.slice(-k).reduce((a,b)=>a+b.flow,0);
+  const last = d[n-1];
+  const streak = (()=>{ let c=0; const sign=Math.sign(last.flow);
+    for(let i=n-1;i>=0 && Math.sign(d[i].flow)===sign && sign!==0;i--) c++;
+    return {c, sign}; })();
+  box.innerHTML =
+    `<div><b class="${last.flow>=0?'pos':'neg'}">${last.flow>=0?'+':'-'}${usd(Math.abs(last.flow))}</b><span>${last.ds}</span></div>
+     <div><b class="${sum(5)>=0?'pos':'neg'}">${sum(5)>=0?'+':'-'}${usd(Math.abs(sum(5)))}</b><span>5 дни</span></div>
+     <div><b class="${sum(30)>=0?'pos':'neg'}">${sum(30)>=0?'+':'-'}${usd(Math.abs(sum(30)))}</b><span>30 дни</span></div>`
+    + (last.assets!=null ? `<div><b>${usd(last.assets)}</b><span>нетни активи</span></div>` : '')
+    + (streak.c>1 ? `<div><b>${streak.c}</b><span>поредни дни ${streak.sign>0?'приток':'отлив'}</span></div>` : '');
+
+  // таблица
+  tbl.innerHTML = `<table><thead><tr><th>Дата</th><th>Поток</th><th>Нетни активи</th></tr></thead><tbody>` +
+    d.slice(-12).reverse().map(r=>
+      `<tr><td>${r.ds}</td>
+        <td class="${r.flow>=0?'pos':'neg'}">${r.flow>=0?'+':'-'}${usd(Math.abs(r.flow))}</td>
+        <td>${r.assets!=null?usd(r.assets):'—'}</td></tr>`).join('') + '</tbody></table>';
+}
+
+document.getElementById('etf-asset').addEventListener('click', e=>{
+  const b = e.target.closest('button[data-ea]'); if(!b) return;
+  S.etfAsset = b.dataset.ea;
+  document.querySelectorAll('#etf-asset button').forEach(x=>x.setAttribute('aria-pressed', x===b));
+  drawEtf();
+});
+document.getElementById('etf-range').addEventListener('click', e=>{
+  const b = e.target.closest('button[data-er]'); if(!b) return;
+  S.etfRange = b.dataset.er==='max' ? 'max' : +b.dataset.er;
+  document.querySelectorAll('#etf-range button').forEach(x=>x.setAttribute('aria-pressed', x===b));
+  drawEtf();
+});
 
 /* ---------------- оркестрация ---------------- */
 async function refresh(){
