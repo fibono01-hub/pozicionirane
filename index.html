@@ -81,7 +81,10 @@ canvas{width:100%;height:290px;display:block;
 .stats{display:flex;gap:18px;flex-wrap:wrap;margin-bottom:12px;font-family:var(--mono);font-size:13px}
 .stats b{font-weight:500;display:block}
 .stats span{color:var(--ink-dim);font-size:11px;font-family:var(--sans)}
-.tabs{display:flex;gap:4px;margin-bottom:18px;border-bottom:1px solid var(--rule)}
+.tabs{display:flex;gap:4px;margin-bottom:18px;border-bottom:1px solid var(--rule);
+  overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tabs button{flex:0 0 auto;white-space:nowrap}
 .tabs button{background:none;border:0;border-bottom:2px solid transparent;color:var(--ink-dim);
   padding:9px 14px;font:inherit;font-size:15px;cursor:pointer;margin-bottom:-1px}
 .tabs button[aria-pressed="true"]{color:var(--ink);border-bottom-color:var(--ink)}
@@ -113,6 +116,20 @@ canvas{width:100%;height:290px;display:block;
 #pgram{height:230px}
 #bpass{height:250px}
 #etfchart{height:260px}
+#mchart{height:350px;touch-action:none}
+#m-read{margin-top:12px}
+.mbox{display:flex;gap:16px;flex-wrap:wrap;font-family:var(--mono);font-size:13px;
+  padding:12px 0;border-top:1px solid var(--rule)}
+.mbox b{font-weight:500;display:block;font-size:16px}
+.mbox span{color:var(--ink-dim);font-size:11px;font-family:var(--sans)}
+.mbox .act{margin-left:auto;display:flex;gap:6px;align-items:center}
+.mbox .act button{background:transparent;border:1px solid var(--rule);color:var(--ink);
+  padding:7px 13px;border-radius:2px;font:inherit;font-size:13px;cursor:pointer}
+.srow{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--rule);font-size:13px}
+.srow i{width:10px;height:10px;border-radius:2px;flex:0 0 auto}
+.srow .sp{font-family:var(--mono);font-weight:500}
+.srow .sd{color:var(--ink-dim);font-size:12px}
+.srow .sx{margin-left:auto;background:none;border:0;color:var(--ink-dim);font-size:17px;cursor:pointer;padding:0 4px}
 .heatrow{display:flex;align-items:center;gap:3px;margin-bottom:3px}
 .heatrow b{width:26px;font-size:11px;color:var(--ink-dim);font-weight:400;font-family:var(--mono)}
 .heatrow span{flex:1;height:15px;border-radius:1px}
@@ -181,6 +198,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
   <button data-tab="ind" aria-pressed="false">Индикатори</button>
   <button data-tab="spec" aria-pressed="false">Спектър</button>
   <button data-tab="etf" aria-pressed="false">ETF</button>
+  <button data-tab="meas" aria-pressed="false">Измерване</button>
 </div>
 
 <div class="controls" id="symbols">
@@ -407,6 +425,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
     <span><i style="background:var(--long);height:9px"></i>приток</span>
     <span><i style="background:var(--short);height:9px"></i>отлив</span>
     <span><i style="background:var(--ink)"></i>кумулативно</span>
+    <span><i style="background:var(--ink-dim)"></i>цена</span>
   </div>
 
   <div class="controls" id="etf-range" style="margin-top:14px">
@@ -432,8 +451,44 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
   </p>
 </div>
 
+<div id="tab-meas" hidden>
+  <div id="m-now" class="now"></div>
+
+  <div class="controls" id="m-int">
+    <button data-mi="1h" aria-pressed="false">1 час</button>
+    <button data-mi="4h" aria-pressed="false">4 часа</button>
+    <button data-mi="1d" aria-pressed="true">Дневно</button>
+    <button data-mi="1w" aria-pressed="false">Седмично</button>
+    <button id="m-log" aria-pressed="false">Лог</button>
+  </div>
+
+  <canvas id="mchart" width="1400" height="660"></canvas>
+
+  <div id="m-read"></div>
+
+  <div class="controls" id="m-days" style="margin-top:14px">
+    <button data-md="90">3 м</button>
+    <button data-md="365" aria-pressed="true">1 г</button>
+    <button data-md="730">2 г</button>
+    <button data-md="1460">4 г</button>
+    <button data-md="max">Макс</button>
+  </div>
+
+  <section style="margin-top:22px">
+    <h2>Запазени измервания</h2>
+    <div id="m-saved"></div>
+  </section>
+
+  <p style="font-size:12px;color:var(--ink-dim);line-height:1.6;max-width:60ch;margin-top:16px">
+    Влачи с пръст, за да опънеш правоъгълник. Показват се процентната промяна между началото и края,
+    броят интервали и календарното време, плюс годишната доходност за същия отрязък.
+    Тапни <b style="color:var(--ink);font-weight:500">Запази</b>, за да задържиш измерването на графиката и
+    да сравниш няколко отрязъка един до друг.
+  </p>
+</div>
+
 <footer>
-  <span style="font-family:var(--mono);color:var(--ink)">версия 18</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
+  <span style="font-family:var(--mono);color:var(--ink)">версия 19</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
   Фъндингът и откритият интерес идват от публичните API-та на Binance, Bybit, OKX и Hyperliquid.
   Ако някоя борса покаже грешка, най-честата причина е блокиране по регион или ограничение на заявките — изчакай минута и обнови.
 </footer>
@@ -1376,7 +1431,10 @@ document.getElementById('tabs').addEventListener('click', e=>{
   document.getElementById('tab-ind').hidden   = S.tab!=='ind';
   document.getElementById('tab-spec').hidden  = S.tab!=='spec';
   document.getElementById('tab-etf').hidden   = S.tab!=='etf';
+  document.getElementById('tab-meas').hidden  = S.tab!=='meas';
+  if(S.tab==='meas'){ renderSaved(); loadMeas().catch(()=>{}); }
   if(S.tab==='spec') loadSpec().catch(()=>{});
+  if(S.tab==='meas'){ saved=[]; renderSaved(); loadMeas().catch(()=>{}); }
   if(S.tab==='etf'){
     if(['BTC','ETH','SOL'].includes(S.sym)){
       S.etfAsset = S.sym;
@@ -2127,7 +2185,7 @@ document.getElementById('se-metric').addEventListener('click', e=>{
 document.getElementById('bp-go').addEventListener('click', drawBandpass);
 
 /* ---------------- ETF потоци ---------------- */
-let etf = null;
+let etf = null, etfPx = {};
 S.etfAsset = 'BTC';
 S.etfRange = 90;
 
@@ -2226,6 +2284,23 @@ function drawEtf(){
     g.fillRect(x(i)-bw/2, r.flow>=0 ? mid-h : mid, bw, Math.max(1,h));
   });
 
+  // цена върху колоните, със собствена скала
+  const pmap = etfPx[S.etfAsset];
+  if(pmap === undefined) ensureEtfPx(S.etfAsset);
+  if(pmap){
+    const pv = d.map(r=>pmap[r.ds] ?? null);
+    const fin = pv.filter(v=>v!=null);
+    if(fin.length>5){
+      const pmn=Math.min(...fin), pmx=Math.max(...fin), prr=(pmx-pmn)||1;
+      const pTop = pad.t, pBot = pad.t + (H-pad.t-pad.b)*0.78;
+      const py = v => pBot - (v-pmn)/prr*(pBot-pTop);
+      g.beginPath(); let st=false;
+      for(let i=0;i<n;i++){ const v=pv[i]; if(v==null) continue;
+        st ? g.lineTo(x(i),py(v)) : (g.moveTo(x(i),py(v)), st=true); }
+      g.strokeStyle = dim; g.lineWidth=1.5; g.stroke();
+    }
+  }
+
   // кумулативна линия в долната част
   const cum = []; let run = 0;
   d.forEach(r=>{ run += r.flow; cum.push(run); });
@@ -2263,6 +2338,18 @@ function drawEtf(){
         <td>${r.assets!=null?usd(r.assets):'—'}</td></tr>`).join('') + '</tbody></table>';
 }
 
+async function ensureEtfPx(asset){
+  if(etfPx[asset]) return;
+  etfPx[asset] = {};                       // пази от повторни заявки докато тече
+  try{
+    const kl = await j(`${spotBase}/api/v3/klines?symbol=${asset}USDT&interval=1d&limit=1000`);
+    const map = {};
+    kl.forEach(k=>{ map[new Date(k[0]).toISOString().slice(0,10)] = parseFloat(k[4]); });
+    etfPx[asset] = map;
+    if(S.tab==='etf') drawEtf();
+  }catch(e){ /* графиката остава без цена */ }
+}
+
 document.getElementById('etf-asset').addEventListener('click', e=>{
   const b = e.target.closest('button[data-ea]'); if(!b) return;
   S.etfAsset = b.dataset.ea;
@@ -2274,6 +2361,276 @@ document.getElementById('etf-range').addEventListener('click', e=>{
   S.etfRange = b.dataset.er==='max' ? 'max' : +b.dataset.er;
   document.querySelectorAll('#etf-range button').forEach(x=>x.setAttribute('aria-pressed', x===b));
   drawEtf();
+});
+
+/* ---------------- измерване с правоъгълник ---------------- */
+const MCOLORS = ['#E0A03C','#3FB6A6','#7C8CF8','#B98BE0','#5FBF7A','#E4685B'];
+const MBARDAYS = {'1h':1/24,'4h':1/6,'1d':1,'1w':7};
+let meas = null;              // {t, o, h, l, c}
+let sel = null;               // текущият правоъгълник {i0,i1,p0,p1}
+let saved = [];               // запазените измервания
+S.mInt = '1d'; S.mDays = 365; S.mLog = false;
+
+async function loadMeas(){
+  const bars = S.mDays==='max' ? 1000
+             : Math.max(30, Math.min(1000, Math.ceil(S.mDays / MBARDAYS[S.mInt])));
+  const [kl, tick] = await Promise.all([
+    j(`${spotBase}/api/v3/klines?symbol=${S.sym}USDT&interval=${S.mInt}&limit=${bars}`),
+    j(`${spotBase}/api/v3/ticker/24hr?symbol=${S.sym}USDT`).catch(()=>null)
+  ]);
+  meas = {
+    t: kl.map(k=>k[0]),
+    o: kl.map(k=>parseFloat(k[1])),
+    h: kl.map(k=>parseFloat(k[2])),
+    l: kl.map(k=>parseFloat(k[3])),
+    c: kl.map(k=>parseFloat(k[4]))
+  };
+  sel = null;
+  saved = saved.filter(v=>v.sym===S.sym && v.int===S.mInt);
+
+  const now = document.getElementById('m-now');
+  if(tick){
+    const ch = parseFloat(tick.priceChangePercent), px = parseFloat(tick.lastPrice);
+    now.innerHTML = `<b>${fmt(px, px<10?4:2)}</b>
+      <s class="${ch>=0?'pos':'neg'}">${pct(ch)}</s>
+      <span>${S.sym}/USDT · 24 ч</span>`;
+  } else {
+    const px = meas.c[meas.c.length-1];
+    now.innerHTML = `<b>${fmt(px, px<10?4:2)}</b><span>${S.sym}/USDT</span>`;
+  }
+  drawMeas();
+  return meas;
+}
+
+// геометрия, споделена между рисуването и жестовете
+function mGeom(){
+  const c = document.getElementById('mchart');
+  const W=c.width, H=c.height, pad={l:8,r:92,t:16,b:28};
+  const n = meas.c.length;
+  const lo0 = Math.min(...meas.l), hi0 = Math.max(...meas.h);
+  const tr = S.mLog ? Math.log : (v=>v);
+  const padv = (tr(hi0)-tr(lo0))*0.05 || 1;
+  const lo = tr(lo0)-padv, hi = tr(hi0)+padv;
+  return {
+    c, W, H, pad, n, lo, hi, tr,
+    x: i => pad.l + (i+0.5)*(W-pad.l-pad.r)/n,
+    y: v => pad.t + (hi-tr(v))/(hi-lo)*(H-pad.t-pad.b),
+    inv: yy => { const q = hi-(yy-pad.t)/(H-pad.t-pad.b)*(hi-lo); return S.mLog?Math.exp(q):q; },
+    ix: cx => Math.max(0, Math.min(n-1, Math.floor((cx-pad.l)/(W-pad.l-pad.r)*n)))
+  };
+}
+
+function drawMeas(){
+  const cv = document.getElementById('mchart'), g = cv.getContext('2d');
+  g.clearRect(0,0,cv.width,cv.height);
+  if(!meas || meas.c.length<3) return;
+  const G = mGeom(), {W,H,pad,n,x,y} = G;
+
+  const css = getComputedStyle(document.documentElement);
+  const dim=css.getPropertyValue('--ink-dim').trim(), rule=css.getPropertyValue('--rule').trim();
+  const ink=css.getPropertyValue('--ink').trim();
+  const A=css.getPropertyValue('--long').trim(), T=css.getPropertyValue('--short').trim();
+
+  g.strokeStyle = rule; g.lineWidth=1;
+  g.font = '400 20px '+css.getPropertyValue('--mono');
+  for(let k=0;k<=4;k++){
+    const yy = pad.t + k*(H-pad.t-pad.b)/4;
+    g.beginPath(); g.moveTo(pad.l,yy); g.lineTo(W-pad.r,yy); g.stroke();
+    const v = G.inv(yy);
+    g.fillStyle = dim;
+    g.fillText(v>=1000 ? (v/1000).toFixed(1)+'K' : v.toFixed(v<10?3:1), W-pad.r+10, yy+7);
+  }
+
+  // запазените правоъгълници отдолу
+  saved.forEach((m,q)=>{
+    const col = MCOLORS[q % MCOLORS.length];
+    const xa=x(m.i0), xb=x(m.i1), ya=y(m.p0), yb=y(m.p1);
+    g.fillStyle = col+'1C';
+    g.fillRect(Math.min(xa,xb), Math.min(ya,yb), Math.abs(xb-xa), Math.abs(yb-ya));
+    g.strokeStyle = col; g.lineWidth=1.5; g.setLineDash([5,4]);
+    g.strokeRect(Math.min(xa,xb), Math.min(ya,yb), Math.abs(xb-xa), Math.abs(yb-ya));
+    g.setLineDash([]);
+  });
+
+  // свещи, или линия когато са прекалено нагъсто
+  const bw = (W-pad.l-pad.r)/n;
+  if(bw >= 3){
+    const body = Math.max(1.5, bw*0.62);
+    for(let i=0;i<n;i++){
+      const up = meas.c[i] >= meas.o[i];
+      g.strokeStyle = g.fillStyle = up ? A : T;
+      g.lineWidth = Math.max(1, bw*0.12);
+      g.beginPath(); g.moveTo(x(i), y(meas.h[i])); g.lineTo(x(i), y(meas.l[i])); g.stroke();
+      const yo=y(meas.o[i]), yc=y(meas.c[i]);
+      g.fillRect(x(i)-body/2, Math.min(yo,yc), body, Math.max(1, Math.abs(yc-yo)));
+    }
+  } else {
+    g.beginPath();
+    for(let i=0;i<n;i++) i?g.lineTo(x(i),y(meas.c[i])):g.moveTo(x(i),y(meas.c[i]));
+    g.strokeStyle = ink; g.lineWidth=2; g.stroke();
+  }
+
+  // активният правоъгълник
+  if(sel){
+    const up = sel.p1 >= sel.p0;
+    const col = up ? A : T;
+    const xa=x(sel.i0), xb=x(sel.i1), ya=y(sel.p0), yb=y(sel.p1);
+    const rx=Math.min(xa,xb), ry=Math.min(ya,yb), rw=Math.abs(xb-xa), rh=Math.abs(yb-ya);
+    g.fillStyle = col+'2A'; g.fillRect(rx, ry, rw, rh);
+    g.strokeStyle = col; g.lineWidth=2; g.strokeRect(rx, ry, rw, rh);
+
+    // стрелка по посоката на движението
+    g.beginPath(); g.moveTo(xa, ya); g.lineTo(xb, yb);
+    g.strokeStyle = col; g.lineWidth=2; g.setLineDash([6,5]); g.stroke(); g.setLineDash([]);
+    const ang = Math.atan2(yb-ya, xb-xa), hl=14;
+    g.beginPath();
+    g.moveTo(xb, yb);
+    g.lineTo(xb-hl*Math.cos(ang-0.4), yb-hl*Math.sin(ang-0.4));
+    g.lineTo(xb-hl*Math.cos(ang+0.4), yb-hl*Math.sin(ang+0.4));
+    g.closePath(); g.fillStyle = col; g.fill();
+
+    const dp = (sel.p1/sel.p0-1)*100;
+    const lbl = pct(dp);
+    g.font = '500 24px '+css.getPropertyValue('--mono');
+    const tw = g.measureText(lbl).width;
+    const lxp = Math.min(W-pad.r-tw-12, Math.max(pad.l+6, (xa+xb)/2 - tw/2));
+    const lyp = Math.min(ya,yb) - 10;
+    g.fillStyle = css.getPropertyValue('--ground').trim();
+    g.fillRect(lxp-7, lyp-22, tw+14, 30);
+    g.strokeStyle = col; g.lineWidth=1.5; g.strokeRect(lxp-7, lyp-22, tw+14, 30);
+    g.fillStyle = col; g.fillText(lbl, lxp, lyp);
+  }
+
+  g.font = '400 20px '+css.getPropertyValue('--mono');
+  g.fillStyle = dim;
+  const fd = ms => { const d=new Date(ms);
+    return (S.mInt==='1h'||S.mInt==='4h')
+      ? d.getDate()+'.'+(d.getMonth()+1)+' '+String(d.getHours()).padStart(2,'0')+':00'
+      : d.getDate()+'.'+(d.getMonth()+1)+'.'+String(d.getFullYear()).slice(2); };
+  g.fillText(fd(meas.t[0]), pad.l, H-8);
+  const tx = fd(meas.t[n-1]);
+  g.fillText(tx, W-pad.r-g.measureText(tx).width, H-8);
+
+  renderMeasRead();
+}
+
+function spanText(ms){
+  const d = ms/86400000;
+  if(d < 1) return fmt(ms/3600000,1)+' часа';
+  if(d < 60) return fmt(d,1)+' дни';
+  if(d < 730) return fmt(d/30.44,1)+' месеца';
+  return fmt(d/365.25,2)+' години';
+}
+
+function renderMeasRead(){
+  const box = document.getElementById('m-read');
+  if(!sel){
+    box.innerHTML = '<div class="empty">Влачи с пръст върху графиката, за да измериш отрязък.</div>';
+    return;
+  }
+  const dp = (sel.p1/sel.p0-1)*100;
+  const bars = Math.abs(sel.i1-sel.i0);
+  const ms = Math.abs(meas.t[sel.i1]-meas.t[sel.i0]);
+  const yrs = ms/(365.25*86400000);
+  // годишна доходност: работи само при положителни цени и ненулев период
+  const ann = (yrs>0.003 && sel.p0>0) ? (Math.pow(sel.p1/sel.p0, 1/yrs)-1)*100 : null;
+  const perBar = bars ? (Math.pow(sel.p1/sel.p0, 1/bars)-1)*100 : null;
+
+  box.innerHTML = `<div class="mbox">
+    <div><b class="${dp>=0?'pos':'neg'}">${pct(dp)}</b><span>промяна</span></div>
+    <div><b>${fmt(sel.p0, sel.p0<10?4:2)} → ${fmt(sel.p1, sel.p1<10?4:2)}</b><span>от / до</span></div>
+    <div><b>${spanText(ms)}</b><span>${bars} интервала</span></div>
+    ${perBar!=null?`<div><b class="${perBar>=0?'pos':'neg'}">${pct(perBar)}</b><span>на интервал</span></div>`:''}
+    ${ann!=null?`<div><b class="${ann>=0?'pos':'neg'}">${pct(ann)}</b><span>годишно</span></div>`:''}
+    <div class="act">
+      <button id="m-save">Запази</button>
+      <button id="m-clear">Изчисти</button>
+    </div>
+  </div>`;
+}
+
+function renderSaved(){
+  const box = document.getElementById('m-saved');
+  if(!saved.length){ box.innerHTML='<div class="empty">Няма запазени измервания.</div>'; return; }
+  box.innerHTML = saved.map((m,q)=>{
+    const dp = (m.p1/m.p0-1)*100;
+    const ms = Math.abs(meas.t[m.i1]-meas.t[m.i0]);
+    const d0 = new Date(meas.t[Math.min(m.i0,m.i1)]).toLocaleDateString('bg-BG',{day:'numeric',month:'short',year:'2-digit'});
+    const d1 = new Date(meas.t[Math.max(m.i0,m.i1)]).toLocaleDateString('bg-BG',{day:'numeric',month:'short',year:'2-digit'});
+    return `<div class="srow">
+      <i style="background:${MCOLORS[q%MCOLORS.length]}"></i>
+      <span class="sp ${dp>=0?'pos':'neg'}">${pct(dp)}</span>
+      <span class="sd">${spanText(ms)} · ${d0} → ${d1}</span>
+      <button class="sx" data-sx="${q}" aria-label="премахни">×</button>
+    </div>`;
+  }).join('');
+}
+
+/* --- жестове --- */
+(function(){
+  const c = document.getElementById('mchart');
+  let drag = null;
+
+  const at = ev => {
+    const r = c.getBoundingClientRect();
+    const cx = ((ev.touches?ev.touches[0].clientX:ev.clientX) - r.left)/r.width*c.width;
+    const cy = ((ev.touches?ev.touches[0].clientY:ev.clientY) - r.top)/r.height*c.height;
+    const G = mGeom();
+    return { i: G.ix(cx), p: G.inv(cy) };
+  };
+
+  const start = ev => {
+    if(!meas) return;
+    const a = at(ev);
+    drag = a;
+    sel = { i0:a.i, i1:a.i, p0:a.p, p1:a.p };
+    drawMeas();
+  };
+  const move = ev => {
+    if(!meas || !drag) return;
+    const a = at(ev);
+    sel.i1 = a.i; sel.p1 = a.p;
+    drawMeas();
+  };
+  const end = () => {
+    if(sel && sel.i0===sel.i1 && Math.abs(sel.p1-sel.p0) < 1e-9){ sel = null; drawMeas(); }
+    drag = null;
+  };
+
+  c.addEventListener('touchstart', e=>{ e.preventDefault(); start(e); }, {passive:false});
+  c.addEventListener('touchmove',  e=>{ e.preventDefault(); move(e);  }, {passive:false});
+  c.addEventListener('touchend',   end, {passive:true});
+  c.addEventListener('pointerdown', e=>{ if(e.pointerType!=='touch') start(e); });
+  c.addEventListener('pointermove', e=>{ if(e.pointerType!=='touch' && e.buttons) move(e); });
+  window.addEventListener('pointerup', end);
+  c.addEventListener('dblclick', ()=>{ sel=null; drawMeas(); });
+})();
+
+document.getElementById('m-read').addEventListener('click', e=>{
+  if(e.target.id==='m-save' && sel){
+    saved.push({ ...sel, sym:S.sym, int:S.mInt });
+    sel = null; drawMeas(); renderSaved();
+  }
+  if(e.target.id==='m-clear'){ sel=null; drawMeas(); }
+});
+document.getElementById('m-saved').addEventListener('click', e=>{
+  const b = e.target.closest('[data-sx]'); if(!b) return;
+  saved.splice(+b.dataset.sx,1); drawMeas(); renderSaved();
+});
+document.getElementById('m-int').addEventListener('click', e=>{
+  const b = e.target.closest('button[data-mi]');
+  if(b){
+    S.mInt = b.dataset.mi;
+    document.querySelectorAll('#m-int button[data-mi]').forEach(x=>x.setAttribute('aria-pressed', x===b));
+    saved = []; renderSaved(); loadMeas().catch(()=>{}); return;
+  }
+  if(e.target.id==='m-log'){ S.mLog=!S.mLog; e.target.setAttribute('aria-pressed', S.mLog); drawMeas(); }
+});
+document.getElementById('m-days').addEventListener('click', e=>{
+  const b = e.target.closest('button[data-md]'); if(!b) return;
+  S.mDays = b.dataset.md==='max' ? 'max' : +b.dataset.md;
+  document.querySelectorAll('#m-days button').forEach(x=>x.setAttribute('aria-pressed', x===b));
+  saved = []; renderSaved(); loadMeas().catch(()=>{});
 });
 
 /* ---------------- оркестрация ---------------- */
@@ -2316,7 +2673,7 @@ document.getElementById('ranges').addEventListener('click', e=>{
 document.getElementById('reload').addEventListener('click', refresh);
 document.getElementById('hl-go').addEventListener('click', loadAddress);
 document.getElementById('hl-addr').addEventListener('keydown', e=>{ if(e.key==='Enter') loadAddress(); });
-window.addEventListener('resize', ()=>{ drawChart(); drawFlow(); drawPrice(); drawZ(); });
+window.addEventListener('resize', ()=>{ drawChart(); drawFlow(); drawPrice(); drawZ(); if(meas) drawMeas(); });
 
 refresh();
 setInterval(refresh, 60000);
