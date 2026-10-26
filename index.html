@@ -123,6 +123,7 @@ canvas{width:100%;height:290px;display:block;
 #vpchart{height:420px}
 #lqchart{height:450px;image-rendering:auto;user-select:none;-webkit-user-select:none;
   -webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+#lqchart{touch-action:pan-y}
 #lqchart[data-cur="1"]{touch-action:none}
 #lq-cross{margin:10px 0 4px;min-height:22px}
 #lq-cross .mbox{border-top:0;padding-top:0}
@@ -667,7 +668,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
 </div>
 
 <footer>
-  <span style="font-family:var(--mono);color:var(--ink)">версия 28</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
+  <span style="font-family:var(--mono);color:var(--ink)">версия 29</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
   Фъндингът и откритият интерес идват от публичните API-та на Binance, Bybit, OKX и Hyperliquid.
   Ако някоя борса покаже грешка, най-честата причина е блокиране по регион или ограничение на заявките — изчакай минута и обнови.
 </footer>
@@ -3332,6 +3333,7 @@ let lq = null;
 S.lqInt='4h'; S.lqLen=400; S.lqMix='retail'; S.lqTouch=true; S.lqDecay=true;
 S.lqHL=7; S.lqK=4; S.lqCur=false;
 let lqMark = null;   // {i, p} — време и цена под пръста
+let lqView = null;   // {i0, i1} — видим отрез при увеличение
 
 // цветова стълба за картата
 const LQ_STOPS = [
@@ -3370,6 +3372,7 @@ async function loadLq(){
     qv: kl.map(k=>parseFloat(k[7])), tb: kl.map(k=>parseFloat(k[10])),
     oiMap, sym:S.sym, int:S.lqInt,
   };
+  lqView = null; lqMark = null;
   buildLq(); drawLq();
   return lq;
 }
@@ -3450,49 +3453,58 @@ function buildLq(){
   lq.grid = grid; lq.pLo = pLo; lq.pHi = pHi; lq.step = step;
   lq.binP = binP; lq.mx = mx || 1;
   lq.bin = bin; lq.gridL = gridL; lq.gridS = gridS;
+  if(lqView && lqView.i1 > n-1) lqView = null;
   lq.lastL = Float64Array.from(curL); lq.lastS = Float64Array.from(curS);
 }
 
 function lqGeom(){
   const cv = document.getElementById('lqchart');
   const W=cv.width, H=cv.height, pad={l:8,r:92,t:14,b:28};
-  const n = lq && lq.grid ? lq.grid.length : 1;
-  const PW = W-pad.l-pad.r, PH = H-pad.t-pad.b;
-  return { cv, W, H, pad, n, PW, PH,
-    y: p => pad.t + (lq.pHi-p)/(lq.pHi-lq.pLo)*PH,
-    x: i => pad.l + (i+0.5)*PW/n,
-    invY: yy => lq.pHi - (yy-pad.t)/PH*(lq.pHi-lq.pLo),
-    invX: xx => Math.max(0, Math.min(n-1, Math.floor((xx-pad.l)/PW*n))) };
+  const N = (lq && lq.grid) ? lq.grid.length : 1;
+  if(!lqView) lqView = { i0:0, i1:N-1 };
+  lqView.i0 = Math.max(0, Math.min(lqView.i0, N-2));
+  lqView.i1 = Math.min(N-1, Math.max(lqView.i1, lqView.i0+1));
+  const i0=lqView.i0, i1=lqView.i1, n=i1-i0+1;
+
+  // ценовата ос следва видимите свещи, за да не остава празно поле при приближаване
+  let lo=Infinity, hi=-Infinity;
+  for(let i=i0;i<=i1;i++){ if(lq.l[i]<lo) lo=lq.l[i]; if(lq.h[i]>hi) hi=lq.h[i]; }
+  const b0 = Math.max(0, Math.min(LQ_NB-1, lq.bin(lo*0.885)));
+  const b1 = Math.max(b0+1, Math.min(LQ_NB-1, lq.bin(hi*1.115)));
+  const pLo = lq.binP(b0)-lq.step/2, pHi = lq.binP(b1)+lq.step/2;
+
+  const PW=W-pad.l-pad.r, PH=H-pad.t-pad.b;
+  return { cv,W,H,pad, N,i0,i1,n, b0,b1, pLo,pHi, PW,PH,
+    y: p => pad.t + (pHi-p)/(pHi-pLo)*PH,
+    x: i => pad.l + (i-i0+0.5)*PW/n,
+    invY: yy => pHi - (yy-pad.t)/PH*(pHi-pLo),
+    invX: xx => i0 + Math.max(0, Math.min(n-1, Math.floor((xx-pad.l)/PW*n))) };
 }
 
 function drawLq(){
   const cv = document.getElementById('lqchart'), g = cv.getContext('2d');
-  const W=cv.width, H=cv.height, pad={l:8,r:92,t:14,b:28};
-  g.clearRect(0,0,W,H);
+  g.clearRect(0,0,cv.width,cv.height);
   if(!lq || !lq.grid) return;
-  const d = lq, n = d.grid.length;
+  const d = lq, G = lqGeom();
+  const {W,H,pad,i0,i1,n,b0,b1,pLo,pHi,PW,PH,x,y} = G;
+  const nb = b1-b0+1;
 
   const css = getComputedStyle(document.documentElement);
   const dim=css.getPropertyValue('--ink-dim').trim(), rule=css.getPropertyValue('--rule').trim();
   const ink=css.getPropertyValue('--ink').trim();
-  const A=css.getPropertyValue('--long').trim(), T=css.getPropertyValue('--short').trim();
   const UP=css.getPropertyValue('--up').trim(), DN=css.getPropertyValue('--down').trim();
-
-  const PW = W-pad.l-pad.r, PH = H-pad.t-pad.b;
-  const y = p => pad.t + (d.pHi-p)/(d.pHi-d.pLo)*PH;
-  const x = i => pad.l + (i+0.5)*PW/n;
 
   // картата се рисува в решетъчна разделителност и се разтяга — така преходите са плавни
   const off = document.createElement('canvas');
-  off.width = n; off.height = LQ_NB;
+  off.width = n; off.height = nb;
   const octx = off.getContext('2d');
-  const img = octx.createImageData(n, LQ_NB);
-  for(let i=0;i<n;i++){
+  const img = octx.createImageData(n, nb);
+  for(let i=i0;i<=i1;i++){
     const col = d.grid[i];
-    for(let b=0;b<LQ_NB;b++){
+    for(let b=b0;b<=b1;b++){
       const u = Math.pow(Math.min(1, col[b]/d.mx), 0.62);   // извивка за контраст
       const [r,gg,bb] = lqColor(u);
-      const px = ((LQ_NB-1-b)*n + i)*4;                      // ред 0 е най-високата цена
+      const px = ((b1-b)*n + (i-i0))*4;                      // ред 0 е най-високата цена
       img.data[px]=r; img.data[px+1]=gg; img.data[px+2]=bb;
       img.data[px+3]= u<=0 ? 0 : 255;
     }
@@ -3502,11 +3514,10 @@ function drawLq(){
   g.drawImage(off, pad.l, pad.t, PW, PH);
 
   // ценова скала
-  g.strokeStyle = rule; g.lineWidth=1;
   g.font = '400 20px '+css.getPropertyValue('--mono');
   for(let k=0;k<=5;k++){
     const yy = pad.t + k*PH/5;
-    const v = d.pHi - k*(d.pHi-d.pLo)/5;
+    const v = pHi - k*(pHi-pLo)/5;
     g.fillStyle = dim;
     g.fillText(v>=1000?(v/1000).toFixed(2)+'K':v.toFixed(v<10?3:1), W-pad.r+9, yy+7);
   }
@@ -3515,7 +3526,7 @@ function drawLq(){
   const bw = PW/n;
   if(bw>=2.6){
     const body = Math.max(1.4, bw*0.58);
-    for(let i=0;i<n;i++){
+    for(let i=i0;i<=i1;i++){
       const up = d.c[i]>=d.o[i];
       g.strokeStyle = g.fillStyle = up?UP:DN;
       g.lineWidth = Math.max(0.8, bw*0.1);
@@ -3525,34 +3536,34 @@ function drawLq(){
     }
   } else {
     g.beginPath();
-    for(let i=0;i<n;i++) i?g.lineTo(x(i),y(d.c[i])):g.moveTo(x(i),y(d.c[i]));
+    for(let i=i0;i<=i1;i++) i===i0?g.moveTo(x(i),y(d.c[i])):g.lineTo(x(i),y(d.c[i]));
     g.strokeStyle = ink; g.lineWidth=1.6; g.stroke();
   }
 
-  // текуща цена
-  const last = d.c[n-1], yl = y(last);
-  g.fillStyle = css.getPropertyValue('--ground').trim();
-  g.fillRect(W-pad.r+5, yl-14, pad.r-9, 28);
-  g.strokeStyle = ink; g.lineWidth=1.5; g.strokeRect(W-pad.r+5, yl-14, pad.r-9, 28);
-  g.font = '500 21px '+css.getPropertyValue('--mono');
-  g.fillStyle = ink;
-  g.fillText(last>=1000?(last/1000).toFixed(2)+'K':last.toFixed(last<10?4:2), W-pad.r+10, yl+7);
+  // текуща цена, когато последната свещ е в кадър
+  if(i1 === d.c.length-1){
+    const last = d.c[i1], yl = y(last);
+    g.fillStyle = css.getPropertyValue('--ground').trim();
+    g.fillRect(W-pad.r+5, yl-14, pad.r-9, 28);
+    g.strokeStyle = ink; g.lineWidth=1.5; g.strokeRect(W-pad.r+5, yl-14, pad.r-9, 28);
+    g.font = '500 21px '+css.getPropertyValue('--mono');
+    g.fillStyle = ink;
+    g.fillText(last>=1000?(last/1000).toFixed(2)+'K':last.toFixed(last<10?4:2), W-pad.r+10, yl+7);
+  }
 
   // дати
   g.font = '400 20px '+css.getPropertyValue('--mono'); g.fillStyle = dim;
   const fd = ms => { const q=new Date(ms);
     return S.lqInt==='1d' ? q.getDate()+'.'+(q.getMonth()+1)+'.'+String(q.getFullYear()).slice(2)
                           : q.getDate()+'.'+(q.getMonth()+1)+' '+String(q.getHours()).padStart(2,'0')+':00'; };
-  g.fillText(fd(d.t[0]), pad.l, H-8);
-  const tx = fd(d.t[n-1]);
+  g.fillText(fd(d.t[i0]), pad.l, H-8);
+  const tx = fd(d.t[i1]);
   g.fillText(tx, W-pad.r-g.measureText(tx).width, H-8);
 
   // кръстачка
-  if(lqMark){
-    const G = lqGeom();
-    const mi = Math.max(0, Math.min(n-1, lqMark.i));
-    const mp = Math.max(lq.pLo, Math.min(lq.pHi, lqMark.p));
-    const mx2 = G.x(mi), my = G.y(mp);
+  if(lqMark && lqMark.i>=i0 && lqMark.i<=i1){
+    const mp = Math.max(pLo, Math.min(pHi, lqMark.p));
+    const mx2 = x(lqMark.i), my = y(mp);
     g.strokeStyle = ink; g.lineWidth=1.5; g.setLineDash([6,6]);
     g.beginPath(); g.moveTo(mx2, pad.t); g.lineTo(mx2, H-pad.b); g.stroke();
     g.beginPath(); g.moveTo(pad.l, my); g.lineTo(W-pad.r, my); g.stroke();
@@ -3614,10 +3625,15 @@ function renderLqSide(){
 function renderLqCross(){
   const box = document.getElementById('lq-cross');
   if(!lq || !lq.grid){ box.innerHTML=''; return; }
+  const N = lq.grid.length;
+  const zoomed = lqView && (lqView.i1-lqView.i0+1) < N;
+  const zres = zoomed
+    ? `<div class="note" style="margin:0">Показани ${lqView.i1-lqView.i0+1} от ${N} свещи · <a href="#" id="lq-zreset" style="color:var(--short)">целия обхват</a></div>`
+    : '';
   if(!lqMark){
-    box.innerHTML = S.lqCur
+    box.innerHTML = zres || (S.lqCur
       ? '<div class="note" style="margin:0">Плъзни пръст по картата, за да отчетеш плътност на дадена цена и момент.</div>'
-      : '';
+      : '<div class="note" style="margin:0">Плъзни с един пръст, за да местиш; с два — за да приближаваш.</div>');
     return;
   }
   const n = lq.grid.length;
@@ -3641,31 +3657,111 @@ function renderLqCross(){
     ${tot>0?`<div><b style="color:${share>=50?'var(--long)':'var(--short)'}">${fmt(share,0)} / ${fmt(100-share,0)}</b><span>лонг / шорт</span></div>`:''}
     <div><b style="font-size:13px">${when}</b><span>момент</span></div>
     <div class="act"><button id="lq-mclear">Изчисти</button></div>
-  </div>`;
+  </div>` + zres;
 }
 
-/* --- маркер на картата --- */
+/* --- маркер, плъзгане и увеличение --- */
 (function(){
   const cv = document.getElementById('lqchart');
+
   const at = (clientX, clientY) => {
     if(!lq || !lq.grid) return;
     const r = cv.getBoundingClientRect();
     const G = lqGeom();
-    const xx = (clientX-r.left)/r.width*cv.width;
-    const yy = (clientY-r.top)/r.height*cv.height;
-    lqMark = { i: G.invX(xx), p: G.invY(yy) };
+    lqMark = {
+      i: G.invX((clientX-r.left)/r.width*cv.width),
+      p: G.invY((clientY-r.top)/r.height*cv.height)
+    };
     drawLq();
   };
-  cv.addEventListener('touchstart', e=>{ if(!S.lqCur) return;
-    e.preventDefault(); at(e.touches[0].clientX, e.touches[0].clientY); }, {passive:false});
-  cv.addEventListener('touchmove', e=>{ if(!S.lqCur) return;
-    e.preventDefault(); at(e.touches[0].clientX, e.touches[0].clientY); }, {passive:false});
-  cv.addEventListener('pointerdown', e=>{ if(e.pointerType!=='touch') at(e.clientX, e.clientY); });
-  cv.addEventListener('pointermove', e=>{ if(e.pointerType!=='touch' && e.buttons) at(e.clientX, e.clientY); });
-  cv.addEventListener('dblclick', ()=>{ lqMark=null; drawLq(); });
+
+  // измества прозореца с даден брой свещи
+  const panBy = bars => {
+    const N = lq.grid.length, span = lqView.i1-lqView.i0+1;
+    let i0 = Math.round(lqView.i0 + bars);
+    i0 = Math.max(0, Math.min(N-span, i0));
+    lqView = { i0, i1: i0+span-1 };
+  };
+  const barsPerPx = () => {
+    const r = cv.getBoundingClientRect();
+    const G = lqGeom();
+    return G.n / (r.width * (G.PW/cv.width));
+  };
+  const zoomTo = (span, anchor) => {
+    const N = lq.grid.length;
+    span = Math.max(12, Math.min(N, Math.round(span)));
+    const rel = (anchor - lqView.i0) / Math.max(1, lqView.i1-lqView.i0);
+    let i0 = Math.round(anchor - rel*span);
+    i0 = Math.max(0, Math.min(N-span, i0));
+    lqView = { i0, i1: i0+span-1 };
+  };
+
+  let pinch = null, drag = null;
+  const dist = t => Math.hypot(t[0].clientX-t[1].clientX, t[0].clientY-t[1].clientY);
+  const mid  = t => (t[0].clientX + t[1].clientX)/2;
+  const idxAtX = clientX => {
+    const r = cv.getBoundingClientRect();
+    return lqGeom().invX((clientX-r.left)/r.width*cv.width);
+  };
+
+  cv.addEventListener('touchstart', e=>{
+    if(!lq || !lq.grid) return;
+    if(e.touches.length===2){
+      drag = null;
+      pinch = { d:dist(e.touches), mx:mid(e.touches),
+                span:lqView.i1-lqView.i0+1, anchor:idxAtX(mid(e.touches)) };
+    } else if(e.touches.length===1){
+      if(S.lqCur){ e.preventDefault(); at(e.touches[0].clientX, e.touches[0].clientY); }
+      else drag = { x:e.touches[0].clientX };
+    }
+  }, {passive:false});
+
+  cv.addEventListener('touchmove', e=>{
+    if(!lq || !lq.grid) return;
+    if(e.touches.length===2 && pinch){
+      e.preventDefault();
+      const dd = dist(e.touches), m = mid(e.touches);
+      if(dd>8) zoomTo(pinch.span*(pinch.d/dd), pinch.anchor);
+      const dx = m - pinch.mx;                      // два пръста местят и настрани
+      if(Math.abs(dx)>1){ panBy(-dx*barsPerPx()); pinch.mx = m; }
+      drawLq();
+    } else if(e.touches.length===1){
+      if(S.lqCur){ e.preventDefault(); at(e.touches[0].clientX, e.touches[0].clientY); }
+      else if(drag){
+        e.preventDefault();
+        const dx = e.touches[0].clientX - drag.x;
+        panBy(-dx*barsPerPx()); drag.x = e.touches[0].clientX;
+        drawLq();
+      }
+    }
+  }, {passive:false});
+
+  cv.addEventListener('touchend', ()=>{ pinch=null; drag=null; }, {passive:true});
+
+  cv.addEventListener('pointerdown', e=>{
+    if(e.pointerType==='touch' || !lq || !lq.grid) return;
+    if(S.lqCur) at(e.clientX, e.clientY); else drag = { x:e.clientX };
+  });
+  cv.addEventListener('pointermove', e=>{
+    if(e.pointerType==='touch' || !lq || !lq.grid || !e.buttons) return;
+    if(S.lqCur) at(e.clientX, e.clientY);
+    else if(drag){ const dx=e.clientX-drag.x; panBy(-dx*barsPerPx()); drag.x=e.clientX; drawLq(); }
+  });
+  window.addEventListener('pointerup', ()=>{ drag=null; });
+
+  cv.addEventListener('wheel', e=>{
+    if(!lq || !lq.grid) return;
+    e.preventDefault();
+    if(e.shiftKey) panBy(e.deltaY*barsPerPx()*0.5);
+    else zoomTo((lqView.i1-lqView.i0+1)*(e.deltaY>0?1.2:0.83), idxAtX(e.clientX));
+    drawLq();
+  }, {passive:false});
+
+  cv.addEventListener('dblclick', ()=>{ lqMark=null; lqView=null; drawLq(); });
 
   document.getElementById('lq-cross').addEventListener('click', e=>{
     if(e.target.id==='lq-mclear'){ lqMark=null; drawLq(); }
+    if(e.target.id==='lq-zreset'){ lqView=null; drawLq(); }
   });
 })();
 
