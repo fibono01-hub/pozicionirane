@@ -118,6 +118,16 @@ canvas{width:100%;height:290px;display:block;
 #etfchart{height:260px}
 #cbpchart{height:200px}
 #vpchart{height:420px}
+#lqchart{height:450px;image-rendering:auto}
+.warn{font-size:13px;color:var(--ink-dim);line-height:1.6;max-width:60ch;margin-bottom:18px;
+  border-left:3px solid var(--hot);padding-left:14px}
+.warn b{color:var(--ink);font-weight:500}
+.note{font-size:12px;color:var(--ink-dim);line-height:1.55;max-width:58ch;margin:-6px 0 18px}
+.note b{color:var(--ink);font-weight:500}
+#lq-scale{align-items:center}
+#lq-scale .ramp{width:120px;height:10px;border-radius:1px;display:inline-block;vertical-align:middle}
+#lq-help p{font-size:13px;color:var(--ink-dim);line-height:1.6;margin-bottom:10px;max-width:60ch}
+#lq-help b{color:var(--ink);font-weight:500}
 #vp-verdict{border-left:3px solid var(--rule);padding:2px 0 2px 18px;margin-bottom:20px}
 #vp-verdict .line{font-size:24px;line-height:1.25;font-weight:500;letter-spacing:-.02em}
 #vp-verdict .why{margin-top:9px;color:var(--ink-dim);font-size:14px;max-width:56ch;line-height:1.55}
@@ -220,6 +230,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
   <button data-tab="etf" aria-pressed="false">ETF</button>
   <button data-tab="meas" aria-pressed="false">Измерване</button>
   <button data-tab="vp" aria-pressed="false">Профил</button>
+  <button data-tab="liq" aria-pressed="false">Ликвидации</button>
 </div>
 
 <div class="controls" id="symbols">
@@ -577,8 +588,53 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
   </section>
 </div>
 
+<div id="tab-liq" hidden>
+  <p class="warn">Това е <b>модел</b>, не измерени данни. Борсите не публикуват ликвидационните нива на
+    отворените позиции. Картата по-долу ги изчислява от допускане за ливъридж върху реалния обем и
+    открит интерес. Всяко допускане е бутон, който можеш да промениш — именно затова я правим сами.</p>
+
+  <div class="controls" id="lq-int">
+    <button data-li="1h" aria-pressed="false">1 час</button>
+    <button data-li="4h" aria-pressed="true">4 часа</button>
+    <button data-li="1d" aria-pressed="false">Дневно</button>
+  </div>
+  <div class="controls" id="lq-len">
+    <button data-ll="200">Кратък</button>
+    <button data-ll="400" aria-pressed="true">Среден</button>
+    <button data-ll="800">Дълъг</button>
+  </div>
+
+  <canvas id="lqchart" width="1400" height="820"></canvas>
+  <div class="legend" id="lq-scale"></div>
+
+  <h2 style="margin-top:22px">Допускания</h2>
+
+  <div class="controls" id="lq-mix">
+    <button data-lm="retail" aria-pressed="true">Дребен ливъридж</button>
+    <button data-lm="even">Равномерен</button>
+    <button data-lm="high">Висок ливъридж</button>
+  </div>
+  <div id="lq-mixnote" class="note"></div>
+
+  <div class="controls" id="lq-rules">
+    <button id="lq-touch" aria-pressed="true">Махай при докосване</button>
+    <button id="lq-decay" aria-pressed="true">Затихване във времето</button>
+  </div>
+  <div id="lq-rulenote" class="note"></div>
+
+  <section style="margin-top:22px">
+    <h2>Най-плътни зони сега</h2>
+    <div id="lq-levels"></div>
+  </section>
+
+  <section>
+    <h2>Как се смята</h2>
+    <div id="lq-help"></div>
+  </section>
+</div>
+
 <footer>
-  <span style="font-family:var(--mono);color:var(--ink)">версия 23</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
+  <span style="font-family:var(--mono);color:var(--ink)">версия 25</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
   Фъндингът и откритият интерес идват от публичните API-та на Binance, Bybit, OKX и Hyperliquid.
   Ако някоя борса покаже грешка, най-честата причина е блокиране по регион или ограничение на заявките — изчакай минута и обнови.
 </footer>
@@ -1523,6 +1579,10 @@ document.getElementById('tabs').addEventListener('click', e=>{
   document.getElementById('tab-etf').hidden   = S.tab!=='etf';
   document.getElementById('tab-meas').hidden  = S.tab!=='meas';
   document.getElementById('tab-vp').hidden    = S.tab!=='vp';
+  document.getElementById('tab-liq').hidden   = S.tab!=='liq';
+  if(S.tab==='liq') loadLq().catch(e=>{
+    document.getElementById('lq-levels').innerHTML =
+      `<div class="empty">Няма достъп до данните. Причина: ${e.message||e}</div>`; });
   if(S.tab==='vp') loadVp().catch(()=>{
     document.getElementById('vp-read').innerHTML='<div class="empty">Няма достъп до данните.</div>'; });
   if(S.tab==='meas'){ renderSaved(); loadMeas().catch(()=>{}); }
@@ -3219,6 +3279,281 @@ document.getElementById('vp-bars').addEventListener('click', e=>{
   loadVp().catch(()=>{});
 });
 
+/* ---------------- модел за ликвидационни нива ---------------- */
+// Нивата не са публични данни. Изчисляват се от допускане за разпределението на ливъриджа,
+// приложено върху реалния обем и промяната в открития интерес.
+const LQ_MIX = {
+  retail: { name:'Дребен ливъридж', w:{10:0.45, 25:0.30, 50:0.17, 100:0.08},
+            note:'Повечето позиции са на 10x и 25x. Нивата излизат далеч от цената и зоните са широки.' },
+  even:   { name:'Равномерен',      w:{10:0.25, 25:0.25, 50:0.25, 100:0.25},
+            note:'Четирите степени тежат еднакво. Неутрално допускане, когато нямаш мнение.' },
+  high:   { name:'Висок ливъридж',  w:{10:0.15, 25:0.25, 50:0.30, 100:0.30},
+            note:'Тежестта е към 50x и 100x. Нивата се събират близо до цената и зоните стават тесни и ярки.' },
+};
+const MM = 0.004;        // поддържащ марж: ликвидацията идва малко преди пълния ход от 1/L
+const LQ_NB = 140;       // ценови кошчета
+
+let lq = null;
+S.lqInt='4h'; S.lqLen=400; S.lqMix='retail'; S.lqTouch=true; S.lqDecay=true;
+
+// цветова стълба за картата
+const LQ_STOPS = [
+  [0.00, 21, 26, 43], [0.16, 28, 54, 82], [0.38, 31, 112, 120],
+  [0.60, 63, 182, 166], [0.81, 224, 160, 60], [1.00, 255, 233, 176],
+];
+function lqColor(u){
+  u = Math.max(0, Math.min(1, u));
+  for(let i=1;i<LQ_STOPS.length;i++){
+    const a=LQ_STOPS[i-1], b=LQ_STOPS[i];
+    if(u<=b[0]){
+      const f=(u-a[0])/((b[0]-a[0])||1);
+      return [a[1]+(b[1]-a[1])*f, a[2]+(b[2]-a[2])*f, a[3]+(b[3]-a[3])*f];
+    }
+  }
+  const z=LQ_STOPS[LQ_STOPS.length-1]; return [z[1],z[2],z[3]];
+}
+
+async function loadLq(){
+  const kl = await j(`${spotBase.replace('api.binance.com','fapi.binance.com')}/fapi/v1/klines`
+    + `?symbol=${S.sym}USDT&interval=${S.lqInt}&limit=${S.lqLen}`);
+  if(kl.length<30) throw new Error('малко свещи');
+
+  // открит интерес, когато има: дава по-добра оценка колко позиции се отварят
+  let oiMap = null;
+  try{
+    const oi = await j(`https://fapi.binance.com/futures/data/openInterestHist`
+      + `?symbol=${S.sym}USDT&period=${S.lqInt}&limit=500`);
+    oiMap = new Map(oi.map(r=>[r.timestamp, parseFloat(r.sumOpenInterestValue)]));
+  }catch(e){ oiMap = null; }
+
+  lq = {
+    t: kl.map(k=>k[0]),
+    o: kl.map(k=>parseFloat(k[1])), h: kl.map(k=>parseFloat(k[2])),
+    l: kl.map(k=>parseFloat(k[3])), c: kl.map(k=>parseFloat(k[4])),
+    qv: kl.map(k=>parseFloat(k[7])), tb: kl.map(k=>parseFloat(k[10])),
+    oiMap, sym:S.sym, int:S.lqInt,
+  };
+  buildLq(); drawLq();
+  return lq;
+}
+
+function buildLq(){
+  const d = lq, n = d.t.length;
+  const mix = LQ_MIX[S.lqMix].w;
+  const levs = Object.keys(mix).map(Number);
+
+  // обхватът покрива и нивата отвъд цената: при 10x те са на 10% встрани
+  const pLo = Math.min(...d.l) * 0.885, pHi = Math.max(...d.h) * 1.115;
+  const step = (pHi-pLo)/LQ_NB;
+  const bin = p => Math.floor((p-pLo)/step);
+  const binP = b => pLo + (b+0.5)*step;
+
+  // колко позиции се отварят на свещ
+  const newPos = d.t.map((t,i)=>{
+    if(d.oiMap){
+      const a = d.oiMap.get(t), b = i>0 ? d.oiMap.get(d.t[i-1]) : null;
+      if(a!=null && b!=null) return Math.max(0, a-b) + d.qv[i]*0.02;
+    }
+    return d.qv[i]*0.15;                 // резервен вариант: дял от оборота
+  });
+
+  // затихване: позиции се закриват и доброволно, не само чрез ликвидация
+  const barDays = {'1h':1/24,'4h':1/6,'1d':1}[S.lqInt];
+  const halfLife = 7;                    // дни
+  const decay = S.lqDecay ? Math.pow(0.5, barDays/halfLife) : 1;
+
+  const cur = new Float64Array(LQ_NB);
+  const grid = [];
+  for(let i=0;i<n;i++){
+    if(decay!==1) for(let b=0;b<LQ_NB;b++) cur[b] *= decay;
+
+    const entry = (d.h[i]+d.l[i]+d.c[i])/3;
+    const share = d.qv[i] ? d.tb[i]/d.qv[i] : 0.5;
+    const amt = newPos[i];
+    for(const L of levs){
+      const off = 1/L - MM;
+      const bL = bin(entry*(1-off)), bS = bin(entry*(1+off));
+      if(bL>=0 && bL<LQ_NB) cur[bL] += amt*share*mix[L];
+      if(bS>=0 && bS<LQ_NB) cur[bS] += amt*(1-share)*mix[L];
+    }
+
+    // цената мина през тези нива — позициите там вече са затворени принудително
+    if(S.lqTouch){
+      const b0 = Math.max(0, bin(d.l[i])), b1 = Math.min(LQ_NB-1, bin(d.h[i]));
+      for(let b=b0;b<=b1;b++) cur[b] = 0;
+    }
+
+    grid.push(Float64Array.from(cur));
+  }
+
+  // мащаб по 99-ия персентил, за да не избеля всичко заради един връх
+  const flat = [];
+  grid.forEach(col=>col.forEach(v=>{ if(v>0) flat.push(v); }));
+  flat.sort((a,b)=>a-b);
+  const mx = flat.length ? flat[Math.floor(flat.length*0.99)] : 1;
+
+  lq.grid = grid; lq.pLo = pLo; lq.pHi = pHi; lq.step = step;
+  lq.binP = binP; lq.mx = mx || 1;
+}
+
+function drawLq(){
+  const cv = document.getElementById('lqchart'), g = cv.getContext('2d');
+  const W=cv.width, H=cv.height, pad={l:8,r:92,t:14,b:28};
+  g.clearRect(0,0,W,H);
+  if(!lq || !lq.grid) return;
+  const d = lq, n = d.grid.length;
+
+  const css = getComputedStyle(document.documentElement);
+  const dim=css.getPropertyValue('--ink-dim').trim(), rule=css.getPropertyValue('--rule').trim();
+  const ink=css.getPropertyValue('--ink').trim();
+  const A=css.getPropertyValue('--long').trim(), T=css.getPropertyValue('--short').trim();
+
+  const PW = W-pad.l-pad.r, PH = H-pad.t-pad.b;
+  const y = p => pad.t + (d.pHi-p)/(d.pHi-d.pLo)*PH;
+  const x = i => pad.l + (i+0.5)*PW/n;
+
+  // картата се рисува в решетъчна разделителност и се разтяга — така преходите са плавни
+  const off = document.createElement('canvas');
+  off.width = n; off.height = LQ_NB;
+  const octx = off.getContext('2d');
+  const img = octx.createImageData(n, LQ_NB);
+  for(let i=0;i<n;i++){
+    const col = d.grid[i];
+    for(let b=0;b<LQ_NB;b++){
+      const u = Math.pow(Math.min(1, col[b]/d.mx), 0.62);   // извивка за контраст
+      const [r,gg,bb] = lqColor(u);
+      const px = ((LQ_NB-1-b)*n + i)*4;                      // ред 0 е най-високата цена
+      img.data[px]=r; img.data[px+1]=gg; img.data[px+2]=bb;
+      img.data[px+3]= u<=0 ? 0 : 255;
+    }
+  }
+  octx.putImageData(img, 0, 0);
+  g.imageSmoothingEnabled = true;
+  g.drawImage(off, pad.l, pad.t, PW, PH);
+
+  // ценова скала
+  g.strokeStyle = rule; g.lineWidth=1;
+  g.font = '400 20px '+css.getPropertyValue('--mono');
+  for(let k=0;k<=5;k++){
+    const yy = pad.t + k*PH/5;
+    const v = d.pHi - k*(d.pHi-d.pLo)/5;
+    g.fillStyle = dim;
+    g.fillText(v>=1000?(v/1000).toFixed(2)+'K':v.toFixed(v<10?3:1), W-pad.r+9, yy+7);
+  }
+
+  // цената отгоре
+  const bw = PW/n;
+  if(bw>=2.6){
+    const body = Math.max(1.4, bw*0.58);
+    for(let i=0;i<n;i++){
+      const up = d.c[i]>=d.o[i];
+      g.strokeStyle = g.fillStyle = up?A:T;
+      g.lineWidth = Math.max(0.8, bw*0.1);
+      g.beginPath(); g.moveTo(x(i),y(d.h[i])); g.lineTo(x(i),y(d.l[i])); g.stroke();
+      const yo=y(d.o[i]), yc=y(d.c[i]);
+      g.fillRect(x(i)-body/2, Math.min(yo,yc), body, Math.max(1,Math.abs(yc-yo)));
+    }
+  } else {
+    g.beginPath();
+    for(let i=0;i<n;i++) i?g.lineTo(x(i),y(d.c[i])):g.moveTo(x(i),y(d.c[i]));
+    g.strokeStyle = ink; g.lineWidth=1.6; g.stroke();
+  }
+
+  // текуща цена
+  const last = d.c[n-1], yl = y(last);
+  g.fillStyle = css.getPropertyValue('--ground').trim();
+  g.fillRect(W-pad.r+5, yl-14, pad.r-9, 28);
+  g.strokeStyle = ink; g.lineWidth=1.5; g.strokeRect(W-pad.r+5, yl-14, pad.r-9, 28);
+  g.font = '500 21px '+css.getPropertyValue('--mono');
+  g.fillStyle = ink;
+  g.fillText(last>=1000?(last/1000).toFixed(2)+'K':last.toFixed(last<10?4:2), W-pad.r+10, yl+7);
+
+  // дати
+  g.font = '400 20px '+css.getPropertyValue('--mono'); g.fillStyle = dim;
+  const fd = ms => { const q=new Date(ms);
+    return S.lqInt==='1d' ? q.getDate()+'.'+(q.getMonth()+1)+'.'+String(q.getFullYear()).slice(2)
+                          : q.getDate()+'.'+(q.getMonth()+1)+' '+String(q.getHours()).padStart(2,'0')+':00'; };
+  g.fillText(fd(d.t[0]), pad.l, H-8);
+  const tx = fd(d.t[n-1]);
+  g.fillText(tx, W-pad.r-g.measureText(tx).width, H-8);
+
+  renderLqSide();
+}
+
+function renderLqSide(){
+  // стълбата
+  const stops = [0,.2,.4,.6,.8,1].map(u=>{ const [r,g,b]=lqColor(u); return `rgb(${r|0},${g|0},${b|0}) ${u*100}%`; });
+  document.getElementById('lq-scale').innerHTML =
+    `<span>слабо</span><span class="ramp" style="background:linear-gradient(90deg,${stops.join(',')})"></span><span>плътно</span>`
+    + `<span style="margin-left:auto;font-family:var(--mono);font-size:11px">${lq.oiMap?'с открит интерес':'само по оборот'}</span>`;
+
+  document.getElementById('lq-mixnote').innerHTML = LQ_MIX[S.lqMix].note;
+  document.getElementById('lq-rulenote').innerHTML =
+    (S.lqTouch
+      ? '<b>Махай при докосване</b> нулира нивата, през които цената вече е минала — те са били ликвидирани. Изключи го, за да видиш колко от картата е само натрупване.'
+      : '<b>Махането при докосване е изключено.</b> Картата показва всички изчислени нива, включително вече пометените — полезно за сравнение, но нереалистично.')
+    + '<br>' +
+    (S.lqDecay
+      ? '<b>Затихването</b> намалява наполовина всяко ниво на седем дни, защото позиции се закриват и доброволно. Без него старите зони стоят вечно — точно оттам идва илюзията за „мощна зона" отпреди месеци.'
+      : '<b>Затихването е изключено.</b> Нивата се трупат без край, докато цената не ги докосне — така работят повечето публични карти.');
+
+  // най-плътните зони в последната колона
+  const col = lq.grid[lq.grid.length-1], px = lq.c[lq.c.length-1];
+  const zones = [];
+  for(let b=1;b<LQ_NB-1;b++){
+    if(col[b]>col[b-1] && col[b]>=col[b+1] && col[b]>lq.mx*0.18)
+      zones.push({ p:lq.binP(b), v:col[b] });
+  }
+  zones.sort((a,b)=>b.v-a.v);
+  const top = zones.slice(0,8).sort((a,b)=>b.p-a.p);
+
+  document.getElementById('lq-levels').innerHTML = top.length
+    ? `<table><thead><tr><th>Цена</th><th>Страна</th><th>Разстояние</th><th>Плътност</th></tr></thead><tbody>`
+      + top.map(z=>{
+          const dd = (z.p/px-1)*100;
+          const side = z.p>px ? 'шортове' : 'лонгове';
+          return `<tr><td>${fmt(z.p, z.p<10?4:2)}</td>
+            <td style="font-family:var(--sans);color:${z.p>px?'var(--short)':'var(--long)'}">${side}</td>
+            <td class="${dd>=0?'pos':'neg'}">${pct(dd)}</td>
+            <td>${fmt(z.v/lq.mx*100,0)}%</td></tr>`;
+        }).join('') + '</tbody></table>'
+    : '<div class="empty">Няма ясно отделени зони при тези допускания.</div>';
+}
+
+document.getElementById('lq-help').innerHTML = `
+  <p><b>Стъпка 1 — колко позиции се отварят.</b> За всяка свещ се взима увеличението на открития интерес, когато е налично; то е единственото пряко свидетелство, че влизат нови позиции, а не че се разменят стари. Когато няма такива данни, се ползва дял от оборота. Горе вдясно пише кое от двете е в сила.</p>
+  <p><b>Стъпка 2 — коя страна.</b> Делът агресивни покупки в свещта определя каква част от новите позиции са дълги и каква къси. Свещ, купувана агресивно, оставя предимно лонгове.</p>
+  <p><b>Стъпка 3 — къде е ликвидацията.</b> За вход на цена P и ливъридж L: дългата позиция се ликвидира около P×(1−1/L+mm), късата около P×(1+1/L−mm), където mm е поддържащият марж, тук 0,4%. При 100x това е около 1% встрани, при 10x — около 10%. Обемът се разпределя между четирите степени според избраното разпределение.</p>
+  <p><b>Стъпка 4 — какво се случва после.</b> Всяко ниво се пренася напред във времето. Когато цената мине през него, то се нулира — тези позиции вече са били ликвидирани. Отделно всяко ниво затихва наполовина на седем дни, защото хората закриват и доброволно.</p>
+  <p><b>Къде е слабото място.</b> Разпределението на ливъриджа е допускане, не измерване. Това е най-голямата несигурност в целия модел и затова е бутон, а не скрита константа. Смени го и виж колко се мести картината — ако зона оцелява и при трите разпределения, тя е по-надеждна от зона, която се появява само при едно.</p>
+  <p><b>Второ слабо място.</b> Данните са от перпечуалите на Binance. Позициите на другите борси не са тук, а при алткойни това е съществена част от пазара.</p>
+  <p><b>И трето.</b> Моделът не знае за добавен марж, частично закриване или хедж. Позиция, чийто собственик е долял марж, се е преместила надолу и моделът още я брои на старото място.</p>`;
+
+document.getElementById('lq-int').addEventListener('click', e=>{
+  const b = e.target.closest('button[data-li]'); if(!b) return;
+  S.lqInt = b.dataset.li;
+  document.querySelectorAll('#lq-int button').forEach(x=>x.setAttribute('aria-pressed', x===b));
+  loadLq().catch(()=>{});
+});
+document.getElementById('lq-len').addEventListener('click', e=>{
+  const b = e.target.closest('button[data-ll]'); if(!b) return;
+  S.lqLen = +b.dataset.ll;
+  document.querySelectorAll('#lq-len button').forEach(x=>x.setAttribute('aria-pressed', x===b));
+  loadLq().catch(()=>{});
+});
+document.getElementById('lq-mix').addEventListener('click', e=>{
+  const b = e.target.closest('button[data-lm]'); if(!b) return;
+  S.lqMix = b.dataset.lm;
+  document.querySelectorAll('#lq-mix button').forEach(x=>x.setAttribute('aria-pressed', x===b));
+  if(lq){ buildLq(); drawLq(); }
+});
+document.getElementById('lq-rules').addEventListener('click', e=>{
+  if(e.target.id==='lq-touch'){ S.lqTouch=!S.lqTouch; e.target.setAttribute('aria-pressed', S.lqTouch); }
+  else if(e.target.id==='lq-decay'){ S.lqDecay=!S.lqDecay; e.target.setAttribute('aria-pressed', S.lqDecay); }
+  else return;
+  if(lq){ buildLq(); drawLq(); }
+});
+
 /* ---------------- оркестрация ---------------- */
 async function refresh(){
   document.body.classList.add('loading');
@@ -3259,7 +3594,7 @@ document.getElementById('ranges').addEventListener('click', e=>{
 document.getElementById('reload').addEventListener('click', refresh);
 document.getElementById('hl-go').addEventListener('click', loadAddress);
 document.getElementById('hl-addr').addEventListener('keydown', e=>{ if(e.key==='Enter') loadAddress(); });
-window.addEventListener('resize', ()=>{ drawChart(); drawFlow(); drawPrice(); drawZ(); if(meas) drawMeas(); if(cbp) drawCbp(); if(vp) drawVp(); });
+window.addEventListener('resize', ()=>{ drawChart(); drawFlow(); drawPrice(); drawZ(); if(meas) drawMeas(); if(cbp) drawCbp(); if(vp) drawVp(); if(lq&&lq.grid) drawLq(); });
 
 refresh();
 setInterval(refresh, 60000);
