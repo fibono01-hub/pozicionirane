@@ -124,6 +124,18 @@ canvas{width:100%;height:290px;display:block;
 .warn b{color:var(--ink);font-weight:500}
 .note{font-size:12px;color:var(--ink-dim);line-height:1.55;max-width:58ch;margin:-6px 0 18px}
 .note b{color:var(--ink);font-weight:500}
+.slider{margin-bottom:20px;max-width:58ch}
+.slider label{display:flex;justify-content:space-between;align-items:baseline;font-size:14px;margin-bottom:8px}
+.slider label b{font-family:var(--mono);font-weight:500}
+.slider input[type=range]{width:100%;-webkit-appearance:none;appearance:none;background:transparent;margin:0}
+.slider input[type=range]::-webkit-slider-runnable-track{height:3px;background:var(--rule);border-radius:2px}
+.slider input[type=range]::-moz-range-track{height:3px;background:var(--rule);border-radius:2px}
+.slider input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;
+  border-radius:50%;background:var(--ink);margin-top:-10px;cursor:pointer}
+.slider input[type=range]::-moz-range-thumb{width:22px;height:22px;border:0;border-radius:50%;
+  background:var(--ink);cursor:pointer}
+.slider input[type=range]:focus-visible{outline:2px solid var(--short);outline-offset:4px}
+.slider .hint{display:block;font-size:12px;color:var(--ink-dim);line-height:1.5;margin-top:9px}
 #lq-scale{align-items:center}
 #lq-scale .ramp{width:120px;height:10px;border-radius:1px;display:inline-block;vertical-align:middle}
 #lq-help p{font-size:13px;color:var(--ink-dim);line-height:1.6;margin-bottom:10px;max-width:60ch}
@@ -622,6 +634,18 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
   </div>
   <div id="lq-rulenote" class="note"></div>
 
+  <div class="slider">
+    <label>Полуживот по време <b id="lq-hl-v">7 дни</b></label>
+    <input id="lq-hl" type="range" min="1" max="60" step="1" value="7">
+    <span class="hint">За колко дни нивото пада наполовина само от изминало време.</span>
+  </div>
+
+  <div class="slider">
+    <label>Чувствителност към разстояние <b id="lq-k-v">4,0</b></label>
+    <input id="lq-k" type="range" min="0" max="12" step="0.5" value="4">
+    <span class="hint">Колко по-бързо затихва ниво, което цената е оставила зад себе си в изгодната за позицията посока. На нула затихването е само по време.</span>
+  </div>
+
   <section style="margin-top:22px">
     <h2>Най-плътни зони сега</h2>
     <div id="lq-levels"></div>
@@ -634,7 +658,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
 </div>
 
 <footer>
-  <span style="font-family:var(--mono);color:var(--ink)">версия 25</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
+  <span style="font-family:var(--mono);color:var(--ink)">версия 26</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
   Фъндингът и откритият интерес идват от публичните API-та на Binance, Bybit, OKX и Hyperliquid.
   Ако някоя борса покаже грешка, най-честата причина е блокиране по регион или ограничение на заявките — изчакай минута и обнови.
 </footer>
@@ -3295,6 +3319,7 @@ const LQ_NB = 140;       // ценови кошчета
 
 let lq = null;
 S.lqInt='4h'; S.lqLen=400; S.lqMix='retail'; S.lqTouch=true; S.lqDecay=true;
+S.lqHL=7; S.lqK=4;
 
 // цветова стълба за картата
 const LQ_STOPS = [
@@ -3357,15 +3382,29 @@ function buildLq(){
     return d.qv[i]*0.15;                 // резервен вариант: дял от оборота
   });
 
-  // затихване: позиции се закриват и доброволно, не само чрез ликвидация
   const barDays = {'1h':1/24,'4h':1/6,'1d':1}[S.lqInt];
-  const halfLife = 7;                    // дни
-  const decay = S.lqDecay ? Math.pow(0.5, barDays/halfLife) : 1;
+  const HL = S.lqHL, K = S.lqK;
 
-  const cur = new Float64Array(LQ_NB);
+  // Лонговете и шортовете се водят поотделно, защото „изгодната посока" е различна
+  // за двете страни: ниво под цената е лонг, ниво над нея е шорт.
+  const curL = new Float64Array(LQ_NB), curS = new Float64Array(LQ_NB);
   const grid = [];
+
   for(let i=0;i<n;i++){
-    if(decay!==1) for(let b=0;b<LQ_NB;b++) cur[b] *= decay;
+    const px = d.c[i];
+
+    if(S.lqDecay){
+      for(let b=0;b<LQ_NB;b++){
+        if(!curL[b] && !curS[b]) continue;
+        const q = binP(b);
+        // колко е изпреварила цената нивото в посоката, в която позицията печели
+        const farL = q>0 ? Math.max(0, (px-q)/q) : 0;   // лонг: цената е над нивото
+        const farS = q>0 ? Math.max(0, (q-px)/q) : 0;   // шорт: цената е под нивото
+        // полуживотът се съкращава пропорционално на това разстояние
+        if(curL[b]) curL[b] *= Math.pow(0.5, barDays/(HL/(1+K*farL)));
+        if(curS[b]) curS[b] *= Math.pow(0.5, barDays/(HL/(1+K*farS)));
+      }
+    }
 
     const entry = (d.h[i]+d.l[i]+d.c[i])/3;
     const share = d.qv[i] ? d.tb[i]/d.qv[i] : 0.5;
@@ -3373,17 +3412,19 @@ function buildLq(){
     for(const L of levs){
       const off = 1/L - MM;
       const bL = bin(entry*(1-off)), bS = bin(entry*(1+off));
-      if(bL>=0 && bL<LQ_NB) cur[bL] += amt*share*mix[L];
-      if(bS>=0 && bS<LQ_NB) cur[bS] += amt*(1-share)*mix[L];
+      if(bL>=0 && bL<LQ_NB) curL[bL] += amt*share*mix[L];
+      if(bS>=0 && bS<LQ_NB) curS[bS] += amt*(1-share)*mix[L];
     }
 
     // цената мина през тези нива — позициите там вече са затворени принудително
     if(S.lqTouch){
       const b0 = Math.max(0, bin(d.l[i])), b1 = Math.min(LQ_NB-1, bin(d.h[i]));
-      for(let b=b0;b<=b1;b++) cur[b] = 0;
+      for(let b=b0;b<=b1;b++){ curL[b]=0; curS[b]=0; }
     }
 
-    grid.push(Float64Array.from(cur));
+    const col = new Float64Array(LQ_NB);
+    for(let b=0;b<LQ_NB;b++) col[b] = curL[b]+curS[b];
+    grid.push(col);
   }
 
   // мащаб по 99-ия персентил, за да не избеля всичко заради един връх
@@ -3394,6 +3435,7 @@ function buildLq(){
 
   lq.grid = grid; lq.pLo = pLo; lq.pHi = pHi; lq.step = step;
   lq.binP = binP; lq.mx = mx || 1;
+  lq.lastL = Float64Array.from(curL); lq.lastS = Float64Array.from(curS);
 }
 
 function drawLq(){
@@ -3497,23 +3539,25 @@ function renderLqSide(){
       ? '<b>Затихването</b> намалява наполовина всяко ниво на седем дни, защото позиции се закриват и доброволно. Без него старите зони стоят вечно — точно оттам идва илюзията за „мощна зона" отпреди месеци.'
       : '<b>Затихването е изключено.</b> Нивата се трупат без край, докато цената не ги докосне — така работят повечето публични карти.');
 
-  // най-плътните зони в последната колона
-  const col = lq.grid[lq.grid.length-1], px = lq.c[lq.c.length-1];
+  // най-плътните зони: страната идва от самия модел, не от позицията спрямо цената
+  const px = lq.c[lq.c.length-1];
   const zones = [];
-  for(let b=1;b<LQ_NB-1;b++){
-    if(col[b]>col[b-1] && col[b]>=col[b+1] && col[b]>lq.mx*0.18)
-      zones.push({ p:lq.binP(b), v:col[b] });
-  }
+  [['long', lq.lastL], ['short', lq.lastS]].forEach(([side, arr])=>{
+    for(let b=1;b<LQ_NB-1;b++){
+      if(arr[b]>arr[b-1] && arr[b]>=arr[b+1] && arr[b]>lq.mx*0.14)
+        zones.push({ p:lq.binP(b), v:arr[b], side });
+    }
+  });
   zones.sort((a,b)=>b.v-a.v);
-  const top = zones.slice(0,8).sort((a,b)=>b.p-a.p);
+  const top = zones.slice(0,10).sort((a,b)=>b.p-a.p);
 
   document.getElementById('lq-levels').innerHTML = top.length
     ? `<table><thead><tr><th>Цена</th><th>Страна</th><th>Разстояние</th><th>Плътност</th></tr></thead><tbody>`
       + top.map(z=>{
           const dd = (z.p/px-1)*100;
-          const side = z.p>px ? 'шортове' : 'лонгове';
+          const isL = z.side==='long';
           return `<tr><td>${fmt(z.p, z.p<10?4:2)}</td>
-            <td style="font-family:var(--sans);color:${z.p>px?'var(--short)':'var(--long)'}">${side}</td>
+            <td style="font-family:var(--sans);color:${isL?'var(--long)':'var(--short)'}">${isL?'лонгове':'шортове'}</td>
             <td class="${dd>=0?'pos':'neg'}">${pct(dd)}</td>
             <td>${fmt(z.v/lq.mx*100,0)}%</td></tr>`;
         }).join('') + '</tbody></table>'
@@ -3524,7 +3568,9 @@ document.getElementById('lq-help').innerHTML = `
   <p><b>Стъпка 1 — колко позиции се отварят.</b> За всяка свещ се взима увеличението на открития интерес, когато е налично; то е единственото пряко свидетелство, че влизат нови позиции, а не че се разменят стари. Когато няма такива данни, се ползва дял от оборота. Горе вдясно пише кое от двете е в сила.</p>
   <p><b>Стъпка 2 — коя страна.</b> Делът агресивни покупки в свещта определя каква част от новите позиции са дълги и каква къси. Свещ, купувана агресивно, оставя предимно лонгове.</p>
   <p><b>Стъпка 3 — къде е ликвидацията.</b> За вход на цена P и ливъридж L: дългата позиция се ликвидира около P×(1−1/L+mm), късата около P×(1+1/L−mm), където mm е поддържащият марж, тук 0,4%. При 100x това е около 1% встрани, при 10x — около 10%. Обемът се разпределя между четирите степени според избраното разпределение.</p>
-  <p><b>Стъпка 4 — какво се случва после.</b> Всяко ниво се пренася напред във времето. Когато цената мине през него, то се нулира — тези позиции вече са били ликвидирани. Отделно всяко ниво затихва наполовина на седем дни, защото хората закриват и доброволно.</p>
+  <p><b>Стъпка 4 — какво се случва после.</b> Всяко ниво се пренася напред във времето. Когато цената мине през него, то се нулира — тези позиции вече са били ликвидирани.</p>
+  <p><b>Стъпка 5 — затихване по време и по разстояние.</b> Нивото не оцелява непокътнато само защото цената не го е докоснала. Хората закриват и доброволно, и го правят толкова по-често, колкото по-навътре в печалбата са. Затова полуживотът не е постоянен, а се съкращава с разстоянието: за ниво на цена Q при текуща цена P ефективният полуживот е <b>HL / (1 + K · r)</b>, където r е относителното изпреварване в изгодната за позицията посока — за лонгове (P−Q)/Q, за шортове (Q−P)/Q, и двете отрязани на нула. Лонговете и шортовете се водят поотделно именно за да може „изгодната посока" да значи различно нещо за двете страни.</p>
+  <p>Пример при полуживот 7 дни и чувствителност 4: ниво точно до цената пази седемдневния полуживот; ниво, останало 25% зад нея, има ефективен полуживот 7/(1+1) = 3,5 дни; ниво на 50% зад нея — 2,3 дни. На чувствителност нула затихването е само по време, както беше досега.</p>
   <p><b>Къде е слабото място.</b> Разпределението на ливъриджа е допускане, не измерване. Това е най-голямата несигурност в целия модел и затова е бутон, а не скрита константа. Смени го и виж колко се мести картината — ако зона оцелява и при трите разпределения, тя е по-надеждна от зона, която се появява само при едно.</p>
   <p><b>Второ слабо място.</b> Данните са от перпечуалите на Binance. Позициите на другите борси не са тук, а при алткойни това е съществена част от пазара.</p>
   <p><b>И трето.</b> Моделът не знае за добавен марж, частично закриване или хедж. Позиция, чийто собственик е долял марж, се е преместила надолу и моделът още я брои на старото място.</p>`;
@@ -3547,6 +3593,20 @@ document.getElementById('lq-mix').addEventListener('click', e=>{
   document.querySelectorAll('#lq-mix button').forEach(x=>x.setAttribute('aria-pressed', x===b));
   if(lq){ buildLq(); drawLq(); }
 });
+function lqSliders(){
+  document.getElementById('lq-hl-v').textContent = S.lqHL + (S.lqHL===1?' ден':' дни');
+  document.getElementById('lq-k-v').textContent  = fmt(S.lqK,1);
+}
+document.getElementById('lq-hl').addEventListener('input', e=>{
+  S.lqHL = +e.target.value; lqSliders();
+  if(lq){ buildLq(); drawLq(); }
+});
+document.getElementById('lq-k').addEventListener('input', e=>{
+  S.lqK = +e.target.value; lqSliders();
+  if(lq){ buildLq(); drawLq(); }
+});
+lqSliders();
+
 document.getElementById('lq-rules').addEventListener('click', e=>{
   if(e.target.id==='lq-touch'){ S.lqTouch=!S.lqTouch; e.target.setAttribute('aria-pressed', S.lqTouch); }
   else if(e.target.id==='lq-decay'){ S.lqDecay=!S.lqDecay; e.target.setAttribute('aria-pressed', S.lqDecay); }
