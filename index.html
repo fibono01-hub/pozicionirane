@@ -413,6 +413,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
     <div class="controls" id="z-mode" style="margin-bottom:16px">
       <button data-zm="all">Цяла история</button>
       <button data-zm="roll" aria-pressed="true">Плаващи 4 г.</button>
+      <button id="ind-log" aria-pressed="false">Лог</button>
     </div>
     <div id="ind-chain"></div>
     <div class="chips" id="ind-pick"></div>
@@ -422,6 +423,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
       <span><i style="background:var(--ink-dim)"></i>цена, лог скала</span>
       <span><i style="background:var(--short);height:9px"></i>долни 15%</span>
       <span><i style="background:var(--hot);height:9px"></i>горни 15%</span>
+      <span id="ind-scalenote" style="margin-left:auto;font-family:var(--mono);font-size:11px"></span>
     </div>
   </section>
 
@@ -691,7 +693,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
 </div>
 
 <footer>
-  <span style="font-family:var(--mono);color:var(--ink)">версия 31</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
+  <span style="font-family:var(--mono);color:var(--ink)">версия 32</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
   Фъндингът и откритият интерес идват от публичните API-та на Binance, Bybit, OKX и Hyperliquid.
   Ако някоя борса покаже грешка, най-честата причина е блокиране по регион или ограничение на заявките — изчакай минута и обнови.
 </footer>
@@ -1767,6 +1769,7 @@ function gauge(name, val, unit, min, max, zones, note, na){
 let cmError = null;
 S.zMode = 'roll';
 S.indPick = 'z';
+S.indLog = false;
 
 function applyZMode(){
   if(!chain) return;
@@ -1917,7 +1920,7 @@ function indSeries(){
   }
 
   return {
-    z:      { t:chain.t, v:chain.z, px:chain.px, name:'MVRV Z-score', bands:true },
+    z:      { t:chain.t, v:chain.z, px:chain.px, name:'MVRV Z-score', bands:true, signed:true },
     mvrv:   { t, v:chain.mvrv, px, name:'MVRV съотношение', ref:[1] },
     rsi:    { t, v:r, px, name:'RSI 14д', ref:[30,70] },
     mayer:  { t, v:c.map((q,i)=>s200[i]?q/s200[i]:null),  px, name:'Mayer Multiple', ref:[0.8,2.4] },
@@ -1930,6 +1933,22 @@ function renderPick(){
   const cur = indSeries();
   document.getElementById('ind-pick').innerHTML = Object.keys(cur).map(k=>
     `<button data-pick="${k}" aria-pressed="${S.indPick===k}">${cur[k].name}</button>`).join('');
+}
+
+// Логаритъм от отрицателно число не съществува, а Z-score минава през нулата.
+// Затова за него се ползва симетричен логаритъм: знакът се запазва, а мащабът
+// се свива в двете посоки. За строго положителните серии е обикновен логаритъм.
+function indScale(series, mn, mx){
+  if(!S.indLog) return { f:v=>v, g:v=>v };
+  if(series.signed){
+    const f = v => Math.sign(v)*Math.log1p(Math.abs(v));
+    const g = u => Math.sign(u)*(Math.exp(Math.abs(u))-1);
+    return { f, g, name:'симетричен лог' };
+  }
+  const eps = Math.max(1e-9, Math.abs(mx)*1e-4);
+  const f = v => Math.log(Math.max(eps, v));
+  const g = u => Math.exp(u);
+  return { f, g, name:'лог' };
 }
 
 function drawZ(){
@@ -1954,10 +1973,13 @@ function drawZ(){
   const n = v.length;
   const mn = Math.min(...v) - Math.abs(Math.min(...v))*0.05 - 0.05;
   const mx = Math.max(...v) + Math.abs(Math.max(...v))*0.05 + 0.05;
+  const SC = indScale(S1, mn, mx);
+  const tmn = SC.f(mn), tmx = SC.f(mx), trr = (tmx-tmn) || 1;
   const x = i => pad.l + i*(W-pad.l-pad.r)/(n-1);
-  const y = q => pad.t + (mx-q)/(mx-mn)*(H-pad.t-pad.b);
+  const y = q => pad.t + (tmx-SC.f(q))/trr*(H-pad.t-pad.b);
 
   g.font = '400 19px '+css.getPropertyValue('--mono');
+  const lbl = q => Math.abs(q)>=100 ? q.toFixed(0) : Math.abs(q)>=10 ? q.toFixed(1) : q.toFixed(2);
 
   // зони: при Z-score по персентили, иначе по класическите прагове
   let marks = [];
@@ -1969,12 +1991,26 @@ function drawZ(){
   } else {
     marks = (S1.ref||[]).filter(q=>q>mn && q<mx);
   }
+
+  // при свита скала равномерните деления в преобразуваното пространство показват
+  // къде отива компресията: отгоре делата са нагъсто, отдолу се разтварят
+  if(S.indLog){
+    g.strokeStyle = rule; g.lineWidth=1; g.fillStyle = dim;
+    for(let k=0;k<=4;k++){
+      const q = SC.g(tmx - k*trr/4);
+      const yy = pad.t + k*(H-pad.t-pad.b)/4;
+      g.beginPath(); g.moveTo(pad.l,yy); g.lineTo(W-pad.r,yy); g.stroke();
+      g.fillText(lbl(q), W-pad.r+10, yy+7);
+    }
+  }
+
   g.strokeStyle = rule; g.lineWidth=1; g.fillStyle = dim;
   marks.forEach(q=>{
     g.beginPath(); g.moveTo(pad.l,y(q)); g.lineTo(W-pad.r,y(q)); g.stroke();
-    g.fillText(q.toFixed(q<10?1:0), W-pad.r+10, y(q)+7);
+    if(!S.indLog) g.fillText(lbl(q), W-pad.r+10, y(q)+7);
   });
-  [mn,mx].forEach(q=>g.fillText(q.toFixed(Math.abs(q)<10?1:0), W-pad.r+10, y(q)+ (q===mx?12:-2)));
+  if(!S.indLog)
+    [mn,mx].forEach(q=>g.fillText(lbl(q), W-pad.r+10, y(q)+ (q===mx?12:-2)));
 
   // цена със собствена логаритмична скала
   if(pxs && pxs.some(q=>q!=null)){
@@ -2000,6 +2036,9 @@ function drawZ(){
   g.fillText(yr(0), pad.l, H-6);
   const tx = String(yr(n-1));
   g.fillText(tx, W-pad.r-g.measureText(tx).width, H-6);
+
+  const note = document.getElementById('ind-scalenote');
+  if(note) note.textContent = S.indLog ? (SC.name||'лог') : 'линейна скала';
 }
 
 async function loadInd(){
@@ -2119,6 +2158,12 @@ document.getElementById('ind-pick').addEventListener('click', e=>{
   drawZ();
 });
 document.getElementById('z-mode').addEventListener('click', e=>{
+  if(e.target.id==='ind-log'){
+    S.indLog = !S.indLog;
+    e.target.setAttribute('aria-pressed', S.indLog);
+    drawZ();
+    return;
+  }
   const b = e.target.closest('button[data-zm]'); if(!b) return;
   S.zMode = b.dataset.zm;
   document.querySelectorAll('#z-mode button').forEach(x=>x.setAttribute('aria-pressed', x===b));
