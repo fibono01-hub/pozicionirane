@@ -102,6 +102,7 @@ canvas{width:100%;height:290px;display:block;
 .chips .rm{color:var(--ink-dim);font-size:15px;line-height:1;padding-left:2px}
 .addma{display:flex;gap:6px;margin-bottom:20px;flex-wrap:wrap}
 .now{display:flex;align-items:baseline;gap:12px;margin-bottom:16px}
+#now-bar{margin:-4px 0 20px;padding-bottom:14px;border-bottom:1px solid var(--rule);min-height:38px}
 .now b{font-family:var(--mono);font-size:30px;font-weight:500;letter-spacing:-.02em}
 .now s{text-decoration:none;font-family:var(--mono);font-size:15px}
 .now span{color:var(--ink-dim);font-size:12px;margin-left:auto;text-align:right}
@@ -126,7 +127,6 @@ canvas{width:100%;height:290px;display:block;
 #lqsec{height:330px;touch-action:pan-y;user-select:none;-webkit-user-select:none;
   -webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
 #lq-secread{margin-top:12px}
-#lq-view{border-bottom:1px solid var(--rule)}
 #lqchart{touch-action:pan-y}
 #lqchart[data-cur="1"]{touch-action:none}
 #lq-cross{margin:10px 0 4px;min-height:22px}
@@ -265,6 +265,8 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
   <button id="reload">Обнови</button>
 </div>
 
+<div id="now-bar" class="now"></div>
+
 <div id="tab-pos">
 <div id="verdict">
   <div class="line" id="v-line">Изчаква данни</div>
@@ -333,7 +335,6 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
 </div>
 
 <div id="tab-price" hidden>
-  <div id="p-now" class="now"></div>
 
   <div class="controls" id="p-int">
     <button data-int="4h" aria-pressed="false">4 часа</button>
@@ -536,7 +537,6 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
 </div>
 
 <div id="tab-meas" hidden>
-  <div id="m-now" class="now"></div>
 
   <div class="controls" id="m-int">
     <button data-mi="1h" aria-pressed="false">1 час</button>
@@ -617,11 +617,6 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
     отворените позиции. Картата по-долу ги изчислява от допускане за ливъридж върху реалния обем и
     открит интерес. Всяко допускане е бутон, който можеш да промениш — именно затова я правим сами.</p>
 
-  <div class="tabs" id="lq-view" style="margin-bottom:14px">
-    <button data-lv="map" aria-pressed="true">Карта във времето</button>
-    <button data-lv="sec" aria-pressed="false">Разрез сега</button>
-  </div>
-
   <div class="controls" id="lq-int">
     <button data-li="1h" aria-pressed="false">1 час</button>
     <button data-li="4h" aria-pressed="true">4 часа</button>
@@ -634,11 +629,14 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
     <button data-ll="800">Дълъг</button>
   </div>
 
+  <h2 style="margin-top:4px">Карта във времето</h2>
   <canvas id="lqchart" width="1400" height="820"></canvas>
   <div id="lq-cross"></div>
   <div class="legend" id="lq-scale"></div>
 
-  <div id="lq-secwrap" hidden>
+  <div id="lq-secwrap">
+    <h2 style="margin-top:26px">Разрез сега</h2>
+    <p class="note" style="margin-top:-6px">Последната колона на картата, обърната настрани: колко се помита, ако цената стигне дотам.</p>
     <div class="controls" id="lq-span">
       <button data-ls="0.10">±10%</button>
       <button data-ls="0.25" aria-pressed="true">±25%</button>
@@ -693,7 +691,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
 </div>
 
 <footer>
-  <span style="font-family:var(--mono);color:var(--ink)">версия 30</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
+  <span style="font-family:var(--mono);color:var(--ink)">версия 31</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
   Фъндингът и откритият интерес идват от публичните API-та на Binance, Bybit, OKX и Hyperliquid.
   Ако някоя борса покаже грешка, най-честата причина е блокиране по регион или ограничение на заявките — изчакай минута и обнови.
 </footer>
@@ -919,6 +917,32 @@ function drawChart(){
   const lbl = d => d.getDate()+'.'+(d.getMonth()+1)+' '+String(d.getHours()).padStart(2,'0')+':00';
   g.fillText(lbl(d0), pad.l, H-8);
   const txt = lbl(d1); g.fillText(txt, W-pad.r-g.measureText(txt).width, H-8);
+}
+
+/* ---------------- обща лента с цената ---------------- */
+// Показва се над всички табове, затова се пълни от едно място:
+// който и таб да е отворен, числото е едно и също.
+function renderNow(tick, fallbackPx){
+  const el = document.getElementById('now-bar');
+  if(!el) return;
+  if(tick){
+    const ch = parseFloat(tick.priceChangePercent);
+    const px = parseFloat(tick.lastPrice);
+    const hi = parseFloat(tick.highPrice), lo = parseFloat(tick.lowPrice);
+    const dp = n => n<10 ? 4 : 2;
+    el.innerHTML = `<b>${fmt(px, dp(px))}</b>
+      <s class="${ch>=0?'pos':'neg'}">${pct(ch)}</s>
+      <span>${S.sym}/USDT · 24 ч<br>${fmt(lo,dp(lo))} – ${fmt(hi,dp(hi))} · обем ${usd(parseFloat(tick.quoteVolume))}</span>`;
+  } else if(fallbackPx!=null){
+    el.innerHTML = `<b>${fmt(fallbackPx, fallbackPx<10?4:2)}</b><span>${S.sym}/USDT</span>`;
+  }
+}
+
+async function loadNow(){
+  try{
+    const t = await j(`${spotBase}/api/v3/ticker/24hr?symbol=${S.sym}USDT`);
+    renderNow(t);
+  }catch(e){ /* някой таб ще я напълни при зареждането си */ }
 }
 
 /* ---------------- спот поток ---------------- */
@@ -1324,17 +1348,7 @@ async function loadPrice(){
   price = main;
   view = null;
 
-  const now = document.getElementById('p-now');
-  if(tick){
-    const ch = parseFloat(tick.priceChangePercent);
-    const px = parseFloat(tick.lastPrice);
-    now.innerHTML = `<b>${fmt(px, px<10?4:2)}</b>
-      <s class="${ch>=0?'pos':'neg'}">${pct(ch)}</s>
-      <span>${S.sym}/USDT · 24 ч<br>обем ${usd(parseFloat(tick.quoteVolume))}</span>`;
-  } else {
-    const px = price.c[price.c.length-1];
-    now.innerHTML = `<b>${fmt(px, px<10?4:2)}</b><span>${S.sym}/USDT</span>`;
-  }
+  if(tick) renderNow(tick); else renderNow(null, price.c[price.c.length-1]);
 
   drawPrice();
   return price;
@@ -2750,16 +2764,8 @@ async function loadMeas(){
   sel = null;
   saved = saved.filter(v=>v.sym===S.sym && v.int===S.mInt);
 
-  const now = document.getElementById('m-now');
-  if(tick){
-    const ch = parseFloat(tick.priceChangePercent), px = parseFloat(tick.lastPrice);
-    now.innerHTML = `<b>${fmt(px, px<10?4:2)}</b>
-      <s class="${ch>=0?'pos':'neg'}">${pct(ch)}</s>
-      <span>${S.sym}/USDT · 24 ч</span>`;
-  } else {
-    const px = meas.c[meas.c.length-1];
-    now.innerHTML = `<b>${fmt(px, px<10?4:2)}</b><span>${S.sym}/USDT</span>`;
-  }
+  if(tick) renderNow(tick); else renderNow(null, meas.c[meas.c.length-1]);
+
   drawMeas();
   return meas;
 }
@@ -3791,7 +3797,7 @@ function renderLqCross(){
 })();
 
 /* ---------------- разрез: колко се ликвидира, ако цената стигне дотам ---------------- */
-S.lqSpan = 0.25; S.lqView = 'map';
+S.lqSpan = 0.25;
 let secMark = null;
 
 function lqSecGeom(){
@@ -3949,20 +3955,9 @@ function drawLqSec(){
 })();
 
 function lqShowView(){
-  const map = S.lqView==='map';
-  document.getElementById('lqchart').hidden = !map;
-  document.getElementById('lq-cross').hidden = !map;
-  document.getElementById('lq-scale').hidden = !map;
-  document.getElementById('lq-secwrap').hidden = map;
-  if(lq && lq.grid){ map ? drawLq() : drawLqSec(); }
+  if(lq && lq.grid){ drawLq(); drawLqSec(); }
 }
 
-document.getElementById('lq-view').addEventListener('click', e=>{
-  const b = e.target.closest('button[data-lv]'); if(!b) return;
-  S.lqView = b.dataset.lv;
-  document.querySelectorAll('#lq-view button').forEach(x=>x.setAttribute('aria-pressed', x===b));
-  lqShowView();
-});
 document.getElementById('lq-span').addEventListener('click', e=>{
   const b = e.target.closest('button[data-ls]'); if(!b) return;
   S.lqSpan = b.dataset.ls==='all' ? 'all' : +b.dataset.ls;
@@ -4032,6 +4027,7 @@ document.getElementById('lq-rules').addEventListener('click', e=>{
 async function refresh(){
   document.body.classList.add('loading');
   document.getElementById('stamp').textContent = 'зарежда…';
+  loadNow();
   const [f, sr, rt, , sp] = await Promise.all([
     loadFunding().catch(()=>null),
     loadSeries().catch(()=>null),
@@ -4053,6 +4049,7 @@ document.getElementById('symbols').addEventListener('click', e=>{
   const b = e.target.closest('button[data-sym]'); if(!b) return;
   S.sym = b.dataset.sym;
   document.querySelectorAll('#symbols button[data-sym]').forEach(x=>x.setAttribute('aria-pressed', x===b));
+  renderNow(null, null); loadNow();
   if(S.tab==='price') loadPrice().catch(()=>{});
   if(S.tab==='ind') loadInd();
   if(S.tab==='spec') loadSpec().catch(()=>{});
