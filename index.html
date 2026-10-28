@@ -127,6 +127,19 @@ canvas{width:100%;height:290px;display:block;
 #lqsec{height:330px;touch-action:pan-y;user-select:none;-webkit-user-select:none;
   -webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
 #lq-secread{margin-top:12px}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--rule);display:inline-block;margin:0 4px 0 8px}
+.dot[data-s="1"]{background:var(--long)}
+.dot[data-s="2"]{background:var(--short)}
+.dotlbl{font-size:12px;color:var(--ink-dim);font-family:var(--mono)}
+#lf-list{margin-top:12px}
+#lf-list table{font-size:12px}
+#lf-list td{padding:7px 0}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--rule);display:inline-block;margin-left:4px}
+.dot[data-s="1"]{background:var(--short)}
+.dot[data-s="2"]{background:var(--long)}
+.dotlbl{font-size:12px;color:var(--ink-dim);font-family:var(--mono)}
+#lf-list table{font-size:12px}
+#lf-list td{padding:7px 0}
 #lqchart{touch-action:pan-y}
 #lqchart[data-cur="1"]{touch-action:none}
 #lq-cross{margin:10px 0 4px;min-height:22px}
@@ -141,6 +154,14 @@ canvas{width:100%;height:290px;display:block;
 .fgrid input{background:var(--panel);border:1px solid var(--rule);color:var(--ink);
   padding:9px 10px;border-radius:2px;font:inherit;font-size:15px;font-family:var(--mono);width:100%}
 .fgrid input:focus{outline:none;border-color:var(--ink)}
+#grchart{height:320px;touch-action:pan-y}
+#greq{height:170px;touch-action:pan-y}
+#gropt{height:200px;touch-action:pan-y}
+#gr-optread{margin-top:12px;font-size:13px;color:var(--ink-dim);line-height:1.65;max-width:60ch}
+#gr-optread b{color:var(--ink);font-weight:500}
+#gr-optread p{margin-bottom:9px}
+#gr-help p{font-size:13px;color:var(--ink-dim);line-height:1.6;margin-bottom:10px;max-width:60ch}
+#gr-help b{color:var(--ink);font-weight:500}
 #cachart{height:290px;touch-action:pan-y;user-select:none;-webkit-user-select:none}
 #ca-help p{font-size:13px;color:var(--ink-dim);line-height:1.6;margin-bottom:10px;max-width:60ch}
 #ca-help b{color:var(--ink);font-weight:500}
@@ -264,6 +285,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
   <button data-tab="vp" aria-pressed="false">Профил</button>
   <button data-tab="liq" aria-pressed="false">Ликвидации</button>
   <button data-tab="calc" aria-pressed="false">Калкулатор</button>
+  <button data-tab="grid" aria-pressed="false">Мрежа</button>
 </div>
 
 <div class="controls" id="symbols">
@@ -659,6 +681,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
       <span><i style="background:var(--long);height:9px"></i>лонг нива</span>
       <span><i style="background:var(--short);height:9px"></i>шорт нива</span>
       <span><i style="background:var(--ink)"></i>натрупано от текущата цена</span>
+      <span>● реална ликвидация на живо</span>
     </div>
     <div id="lq-secread"></div>
   </div>
@@ -689,6 +712,17 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
     <input id="lq-k" type="range" min="0" max="12" step="0.5" value="4">
     <span class="hint">Колко по-бързо затихва ниво, което цената е оставила зад себе си в изгодната за позицията посока. На нула затихването е само по време.</span>
   </div>
+
+  <section style="margin-top:26px">
+    <h2>Реални ликвидации — <em>на живо</em></h2>
+    <div class="controls" id="lf-ctl">
+      <button id="lf-on" aria-pressed="false">Свържи</button>
+      <span id="lf-dot" class="dot"></span><span id="lf-lbl" class="dotlbl">изключено</span>
+    </div>
+    <div id="lf-stats" class="stats"></div>
+    <div id="lf-list"></div>
+    <p class="note">Потокът <b>forceOrder</b> на Binance дава принудителните затваряния в момента, в който стават — измерени събития, не модел. Виждат се само ликвидации, случили се докато връзката е отворена; история назад няма. Точките им излизат и върху разреза горе, за да се сравнят с изчислените нива.</p>
+  </section>
 
   <section style="margin-top:22px">
     <h2>Най-плътни зони сега</h2>
@@ -728,9 +762,9 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
 
   <canvas id="cachart" width="1400" height="520"></canvas>
   <div class="legend">
-    <span><i style="background:var(--ink)"></i>нетна печалба при цена</span>
-    <span><i style="background:var(--hot);height:9px"></i>ликвидация</span>
-    <span><i style="background:var(--ink-dim);height:9px"></i>вход · текуща</span>
+    <span><i style="background:var(--ink)"></i>нетен резултат</span>
+    <span><i style="background:var(--hot)"></i>ликвидация</span>
+    <span><i style="background:var(--short)"></i>нула</span>
   </div>
 
   <section style="margin-top:22px">
@@ -744,8 +778,76 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
   </section>
 </div>
 
+<div id="tab-grid" hidden>
+  <p class="warn">Историческа симулация върху изминали свещи. Показва какво <b>би</b> направила мрежата
+    в този период — не какво ще направи занапред. Границите се избират от теб, а в миналото е лесно да
+    избереш такива, които работят.</p>
+
+  <div class="controls" id="gr-int">
+    <button data-gi="15m">15 мин</button>
+    <button data-gi="1h" aria-pressed="true">1 час</button>
+    <button data-gi="4h">4 часа</button>
+    <button data-gi="1d">Дневно</button>
+  </div>
+  <div class="controls" id="gr-len">
+    <button data-gl="200">200 свещи</button>
+    <button data-gl="500" aria-pressed="true">500</button>
+    <button data-gl="1000">1000</button>
+  </div>
+
+  <div class="fgrid">
+    <label>Долна граница<input id="gr-lo" type="text" inputmode="decimal"></label>
+    <label>Горна граница<input id="gr-hi" type="text" inputmode="decimal"></label>
+    <label>Брой нива<input id="gr-n" type="text" inputmode="numeric" value="20"></label>
+    <label>Капитал USD<input id="gr-cap" type="text" inputmode="decimal" value="10000"></label>
+    <label>Такса %<input id="gr-fee" type="text" inputmode="decimal" value="0.05"></label>
+  </div>
+  <div class="controls" id="gr-acts">
+    <button id="gr-auto">Авто граници</button>
+    <button id="gr-run">Пусни</button>
+    <button id="gr-opt">Намери стъпката</button>
+  </div>
+
+  <div id="gr-optwrap" hidden>
+    <h2 style="margin-top:18px">Резултат срещу брой нива</h2>
+    <div id="gr-optstats" class="stats"></div>
+    <canvas id="gropt" width="1400" height="340"></canvas>
+    <div class="legend">
+      <span><i style="background:var(--ink)"></i>целият период</span>
+      <span><i style="background:var(--ink-dim)"></i>втората половина</span>
+      <span><i style="background:var(--hot)"></i>праг на таксите</span>
+    </div>
+    <div id="gr-optread"></div>
+  </div>
+
+  <div id="gr-out" class="stats"></div>
+
+  <canvas id="grchart" width="1400" height="560"></canvas>
+  <div class="legend">
+    <span><i style="background:var(--ink-dim)"></i>цена</span>
+    <span><i style="background:var(--long);height:9px"></i>покупка</span>
+    <span><i style="background:var(--short);height:9px"></i>продажба</span>
+  </div>
+
+  <canvas id="greq" width="1400" height="300"></canvas>
+  <div class="legend">
+    <span><i style="background:var(--ink)"></i>мрежа</span>
+    <span><i style="background:var(--ink-dim)"></i>купи и дръж</span>
+  </div>
+
+  <section style="margin-top:22px">
+    <h2>Нива</h2>
+    <div id="gr-levels"></div>
+  </section>
+
+  <section>
+    <h2>Как работи</h2>
+    <div id="gr-help"></div>
+  </section>
+</div>
+
 <footer>
-  <span style="font-family:var(--mono);color:var(--ink)">версия 34</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
+  <span style="font-family:var(--mono);color:var(--ink)">версия 37</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
   Фъндингът и откритият интерес идват от публичните API-та на Binance, Bybit, OKX и Hyperliquid.
   Ако някоя борса покаже грешка, най-честата причина е блокиране по регион или ограничение на заявките — изчакай минута и обнови.
 </footer>
@@ -1708,7 +1810,9 @@ document.getElementById('tabs').addEventListener('click', e=>{
   document.getElementById('tab-vp').hidden    = S.tab!=='vp';
   document.getElementById('tab-liq').hidden   = S.tab!=='liq';
   document.getElementById('tab-calc').hidden  = S.tab!=='calc';
-  if(S.tab==='calc') loadCalc();
+  document.getElementById('tab-grid').hidden  = S.tab!=='grid';
+  if(S.tab==='calc') loadCalc(); else caStop();
+  if(S.tab==='grid') loadGrid().catch(()=>{});
   if(S.tab==='liq') loadLq().catch(e=>{
     document.getElementById('lq-levels').innerHTML =
       `<div class="empty">Няма достъп до данните. Причина: ${e.message||e}</div>`; });
@@ -4005,6 +4109,20 @@ function drawLqSec(){
     g.fillText(lb, Math.min(W-pad.r-tw-4, Math.max(pad.l+6, cx-tw/2)), pad.t+3);
   }
 
+  // реални ликвидации от живия поток, върху същата ценова ос
+  if(lfEvents.length){
+    const mxU = Math.max(...lfEvents.map(e=>e.usd)) || 1;
+    lfEvents.slice(0,120).forEach(e=>{
+      const bb = lq.bin(e.px);
+      if(bb<b0 || bb>b1) return;
+      const r = 2.5 + Math.sqrt(e.usd/mxU)*6;
+      g.beginPath(); g.arc(x(bb), pad.t+PH-r-2, r, 0, Math.PI*2);
+      g.fillStyle = (e.side==='long' ? A : T) + 'CC';
+      g.fill();
+      g.strokeStyle = ink; g.lineWidth=0.8; g.stroke();
+    });
+  }
+
   // маркер
   if(secMark!=null && secMark>=b0 && secMark<=b1){
     g.strokeStyle = ink; g.lineWidth=1.5; g.setLineDash([5,5]);
@@ -4137,6 +4255,8 @@ document.getElementById('lq-rules').addEventListener('click', e=>{
 /* ---------------- калкулатор за позиция ---------------- */
 S.caLong = true;
 let caFunding = 0;      // текущ фъндинг за 8 часа, в части от единица
+let caLivePx = null;    // цената, която графиката ползва за „сега"
+let caTimer = null;     // тече само докато табът е отворен
 
 const caNum = id => {
   const el = document.getElementById(id);
@@ -4170,6 +4290,18 @@ function caPnlAt(price, P){
     if(hit(sl,false)) return { v:closeAt(sl), how:'SL' };
   }
   return { v:closeAt(price), how:'отворена' };
+}
+
+// Цената, при която нетният резултат е нула. Решава се точно, а не чрез търсене:
+// за лонг  p·qty·(1−такса) = вход·qty + такса при отваряне + фъндинг
+// за шорт  p·qty·(1+такса) = вход·qty − такса при отваряне − фъндинг
+function caBreakEven(P){
+  const { entry, qty, openFee, feeRate, funding, isLong } = P;
+  if(!qty) return null;
+  const be = isLong
+    ? (entry*qty + openFee + funding) / (qty*(1-feeRate))
+    : (entry*qty - openFee - funding) / (qty*(1+feeRate));
+  return (isFinite(be) && be>0) ? be : null;
 }
 
 function caParams(){
@@ -4211,11 +4343,12 @@ function drawCalc(){
     lv.innerHTML = ''; return;
   }
 
-  const live = (price && price.c && price.c.length) ? price.c[price.c.length-1] : null;
+  const live = caLivePx;
   const now = live!=null ? caPnlAt(live, P) : null;
   const atTP = P.tp!=null ? caPnlAt(P.tp, P) : null;
   const atSL = P.sl!=null ? caPnlAt(P.sl, P) : null;
   const toLiq = (P.liq/P.entry-1)*100;
+  const be = caBreakEven(P);
 
   out.innerHTML =
     `<div><b>${usd(P.notional)}</b><span>размер на позицията</span></div>
@@ -4223,6 +4356,7 @@ function drawCalc(){
      <div><b class="neg">${fmt(P.liq, P.liq<10?4:2)}</b><span>ликвидация · ${pct(toLiq)}</span></div>
      <div><b>${usd(P.openFee)}</b><span>такса при отваряне</span></div>
      ${P.funding!==0?`<div><b class="${P.funding<=0?'pos':'neg'}">${P.funding<=0?'+':'−'}${usd(Math.abs(P.funding))}</b><span>фъндинг за ${fmt(P.periods,0)} п.</span></div>`:''}
+     ${be!=null?`<div><b>${fmt(be, be<10?4:2)}</b><span>нула · ${pct((be/P.entry-1)*100)}</span></div>`:''}
      ${now?`<div><b class="${now.v>=0?'pos':'neg'}">${now.v>=0?'+':'−'}${usd(Math.abs(now.v))}</b><span>сега · ${pct(now.v/P.margin*100)}</span></div>`:''}`;
 
   // --- графика на нетния резултат срещу цената ---
@@ -4232,7 +4366,7 @@ function drawCalc(){
   const UP=css.getPropertyValue('--up').trim(), DN=css.getPropertyValue('--down').trim();
 
   const W=cv.width, H=cv.height, pad={l:8,r:92,t:16,b:30};
-  const anchors = [P.entry, P.liq, P.tp, P.sl, live].filter(v=>v!=null && isFinite(v));
+  const anchors = [P.entry, P.liq, P.tp, P.sl, live, be].filter(v=>v!=null && isFinite(v));
   let lo = Math.min(...anchors), hi = Math.max(...anchors);
   const padp = (hi-lo)*0.12 || P.entry*0.05;
   lo = Math.max(0, lo-padp); hi = hi+padp;
@@ -4277,19 +4411,48 @@ function drawCalc(){
   pts.forEach((q,i)=> i?g.lineTo(x(q.pr),y(q.v)):g.moveTo(x(q.pr),y(q.v)));
   g.strokeStyle = ink; g.lineWidth=2.5; g.stroke();
 
+  // етикетите се подреждат на два реда, за да не се застъпват при близки нива
+  const placed = [];
   const vline = (pr, col, label) => {
     if(pr==null || pr<lo || pr>hi) return;
     g.strokeStyle = col; g.lineWidth=1.5; g.setLineDash([6,5]);
     g.beginPath(); g.moveTo(x(pr),pad.t); g.lineTo(x(pr),pad.t+PH); g.stroke(); g.setLineDash([]);
-    g.font = '400 19px '+css.getPropertyValue('--mono'); g.fillStyle = col;
-    const tw = g.measureText(label).width;
-    g.fillText(label, Math.max(pad.l+2, Math.min(W-pad.r-tw, x(pr)-tw/2)), pad.t-3);
+    g.font = '500 19px '+css.getPropertyValue('--mono');
+    const txt = label+' '+fmt(pr, pr<10?4:2);
+    const tw = g.measureText(txt).width;
+    const px0 = Math.max(pad.l+2, Math.min(W-pad.r-tw, x(pr)-tw/2));
+    let row = 0;
+    while(placed.some(q=>q.row===row && px0 < q.x1+8 && px0+tw > q.x0-8)) row++;
+    placed.push({ row, x0:px0, x1:px0+tw });
+    const yy = pad.t - 4 + row*19;
+    g.fillStyle = css.getPropertyValue('--ground').trim();
+    g.fillRect(px0-3, yy-14, tw+6, 18);
+    g.fillStyle = col; g.fillText(txt, px0, yy);
   };
   vline(P.liq, hot, 'ликв');
   vline(P.entry, dim, 'вход');
+  if(be!=null) vline(be, css.getPropertyValue('--short').trim(), 'нула');
   if(P.tp!=null) vline(P.tp, UP, 'TP');
   if(P.sl!=null) vline(P.sl, DN, 'SL');
   if(live!=null) vline(live, ink, 'сега');
+
+  // точка върху кривата на текущата цена, с резултата до нея
+  if(live!=null && live>=lo && live<=hi && now){
+    const lx = x(live), ly = y(now.v);
+    g.beginPath(); g.arc(lx, ly, 6, 0, Math.PI*2);
+    g.fillStyle = now.v>=0 ? UP : DN; g.fill();
+    g.strokeStyle = ink; g.lineWidth=1.6; g.stroke();
+    g.font = '500 23px '+css.getPropertyValue('--mono');
+    const t2 = (now.v>=0?'+':'−')+usd(Math.abs(now.v))+'  '+pct(now.v/P.margin*100);
+    const w2 = g.measureText(t2).width;
+    const bx = Math.max(pad.l+2, Math.min(W-pad.r-w2-12, lx+12));
+    const by = Math.max(pad.t+26, Math.min(pad.t+PH-10, ly-14));
+    g.fillStyle = css.getPropertyValue('--ground').trim();
+    g.fillRect(bx-6, by-20, w2+12, 28);
+    g.strokeStyle = now.v>=0 ? UP : DN; g.lineWidth=1.4;
+    g.strokeRect(bx-6, by-20, w2+12, 28);
+    g.fillStyle = now.v>=0 ? UP : DN; g.fillText(t2, bx, by);
+  }
 
   g.font = '400 20px '+css.getPropertyValue('--mono'); g.fillStyle = dim;
   g.fillText(fmt(lo, lo<10?3:0), pad.l, H-8);
@@ -4298,6 +4461,7 @@ function drawCalc(){
 
   // --- таблица ---
   const rows = [['Вход', P.entry, '—', null]];
+  if(be!=null) rows.push(['Нула след такси', be, '—', 0]);
   if(live!=null) rows.push(['Текуща', live, now.how, now.v]);
   if(P.tp!=null) rows.push(['Take profit', P.tp, 'TP', atTP.v]);
   if(P.sl!=null) rows.push(['Stop loss', P.sl, 'SL', atSL.v]);
@@ -4314,16 +4478,28 @@ function drawCalc(){
       }).join('') + '</tbody></table>';
 }
 
+async function caTick(){
+  try{
+    const t = await j(`${spotBase}/api/v3/ticker/price?symbol=${S.sym}USDT`);
+    const v = parseFloat(t.price);
+    if(isFinite(v) && v>0 && v!==caLivePx){ caLivePx = v; drawCalc(); }
+  }catch(e){ /* при неуспех просто остава старата стойност */ }
+}
+
+function caStop(){ if(caTimer){ clearInterval(caTimer); caTimer = null; } }
+
 async function loadCalc(){
   // текущият фъндинг за 8 часа, за да е реална цената на държането
   try{
     const d = await j(`https://fapi.binance.com/fapi/v1/premiumIndex?symbol=${S.sym}USDT`);
     caFunding = parseFloat(d.lastFundingRate) || 0;
   }catch(e){ caFunding = 0; }
+  await caTick();
   const el = document.getElementById('ca-entry');
-  if(el && !el.value && price && price.c && price.c.length)
-    el.value = price.c[price.c.length-1];
+  if(el && !el.value && caLivePx) el.value = caLivePx;
   drawCalc();
+  caStop();
+  caTimer = setInterval(()=>{ if(S.tab==='calc') caTick(); else caStop(); }, 5000);
 }
 
 document.getElementById('ca-side').addEventListener('click', e=>{
@@ -4336,8 +4512,7 @@ document.querySelectorAll('.fgrid input').forEach(el=>el.addEventListener('input
 document.getElementById('ca-acts').addEventListener('click', e=>{
   const id = e.target.id;
   const ent = document.getElementById('ca-entry');
-  const live = (price && price.c && price.c.length) ? price.c[price.c.length-1] : null;
-  if(id==='ca-now' && live!=null){ ent.value = live; }
+  if(id==='ca-now' && caLivePx!=null){ ent.value = caLivePx; }
   if(id==='ca-clear'){ document.getElementById('ca-tp').value=''; document.getElementById('ca-sl').value=''; }
   if(id==='ca-r1' || id==='ca-r2'){
     const e0 = caNum('ca-entry'); if(!e0) return;
@@ -4354,7 +4529,485 @@ document.getElementById('ca-help').innerHTML = `
   <p><b>Таксите</b> се броят два пъти: веднъж при отваряне върху целия размер и веднъж при затваряне върху цената, на която излизаш. 0,05% е taker при Binance; ако влизаш с лимитна поръчка, сложи 0,02%.</p>
   <p><b>Фъндингът</b> се плаща на всеки 8 часа, а не еднократно. Затова има поле за брой периоди — ден държане са три. Лонговете плащат при положителен фъндинг и получават при отрицателен; за шортовете е обратно. Тегля текущата стойност за избрания актив, но тя се мени и миналото не гарантира бъдещето.</p>
   <p><b>При ликвидация</b> показвам загуба точно колкото маржина. На практика е малко повече заради таксата при принудителното затваряне и възможното подхлъзване, а при много голям ход може да мине и отвъд.</p>
+  <p><b>Графиката е жива.</b> Текущата цена се дърпа на всеки 5 секунди, докато табът е отворен, и точката върху кривата се мести с нея. Таймерът спира, щом излезеш от таба.</p>
+  <p><b>Цената на нула</b> е там, където нетният резултат става нула след всички такси и фъндинг. Решава се точно от уравнението, не се търси по графиката. За лонг тя е над входа, за шорт — под него, и разстоянието е приблизително двойната такса.</p>
   <p><b>Графиката</b> показва нетния резултат при всяка цена, след всички такси. Плоските участъци в краищата са там, защото позицията вече е затворена — на TP, на SL или чрез ликвидация.</p>`;
+
+/* ---------------- жив поток с реални ликвидации ---------------- */
+// При forceOrder страната на ПОРЪЧКАТА е обратна на позицията:
+// SELL поръчка затваря дълга позиция, BUY поръчка затваря къса.
+let lfWs = null, lfOn = false, lfRetry = 0, lfTimer = null;
+let lfEvents = [];                 // {t, side:'long'|'short', px, usd}
+let lfSum = { long:0, short:0, n:0 };
+
+function lfStatus(state, label){
+  const d = document.getElementById('lf-dot'), l = document.getElementById('lf-lbl');
+  if(d) d.dataset.s = state;
+  if(l) l.textContent = label;
+}
+
+function lfClose(){
+  if(lfTimer){ clearTimeout(lfTimer); lfTimer = null; }
+  if(lfWs){
+    const w = lfWs; lfWs = null;
+    try{ w.onclose = null; w.onerror = null; w.onmessage = null; w.close(); }catch(e){}
+  }
+}
+
+function lfConnect(){
+  lfClose();
+  if(!lfOn) return;
+  const stream = `${S.sym.toLowerCase()}usdt@forceOrder`;
+  lfStatus(0, 'свързва…');
+  let ws;
+  try{ ws = new WebSocket(`wss://fstream.binance.com/ws/${stream}`); }
+  catch(e){ lfStatus(0, 'няма връзка'); return; }
+  lfWs = ws;
+
+  ws.onopen = () => { lfRetry = 0; lfStatus(1, 'на живо · '+S.sym); };
+
+  ws.onmessage = ev => {
+    let m; try{ m = JSON.parse(ev.data); }catch(e){ return; }
+    const o = m.o || (m.data && m.data.o);
+    if(!o) return;
+    const px = parseFloat(o.ap || o.p);
+    const qty = parseFloat(o.z || o.q);
+    if(!isFinite(px) || !isFinite(qty) || px<=0) return;
+    // SELL поръчка = ликвидиран лонг
+    const side = (o.S === 'SELL') ? 'long' : 'short';
+    const usd = px*qty;
+    lfEvents.unshift({ t: m.E || Date.now(), side, px, usd });
+    if(lfEvents.length > 200) lfEvents.length = 200;
+    lfSum[side] += usd; lfSum.n++;
+    lfStatus(2, 'събитие · '+S.sym);
+    setTimeout(()=>{ if(lfOn && lfWs===ws) lfStatus(1, 'на живо · '+S.sym); }, 400);
+    renderLf();
+    if(S.tab==='liq' && lq && lq.grid) drawLqSec();
+  };
+
+  ws.onerror = () => { lfStatus(0, 'грешка'); };
+  ws.onclose = () => {
+    if(!lfOn || lfWs!==ws) return;
+    lfWs = null;
+    lfRetry++;
+    const wait = Math.min(30000, 1000*Math.pow(2, Math.min(5, lfRetry)));
+    lfStatus(0, `прекъсна · опит след ${Math.round(wait/1000)}с`);
+    lfTimer = setTimeout(lfConnect, wait);
+  };
+}
+
+function renderLf(){
+  const st = document.getElementById('lf-stats'), ls = document.getElementById('lf-list');
+  if(!st) return;
+  const tot = lfSum.long + lfSum.short;
+  st.innerHTML = lfSum.n
+    ? `<div><b class="neg">${usd(lfSum.long)}</b><span>ликвидирани лонгове</span></div>
+       <div><b class="pos">${usd(lfSum.short)}</b><span>ликвидирани шортове</span></div>
+       <div><b>${lfSum.n}</b><span>събития от свързването</span></div>
+       ${tot?`<div><b>${fmt(lfSum.long/tot*100,0)} / ${fmt(lfSum.short/tot*100,0)}</b><span>дял лонг / шорт</span></div>`:''}`
+    : `<span style="color:var(--ink-dim);font-size:13px">${lfOn?'Чака събитие. При спокоен пазар може да мине и доста време.':'Изключено.'}</span>`;
+
+  ls.innerHTML = lfEvents.length
+    ? `<table><thead><tr><th>Час</th><th>Страна</th><th>Цена</th><th>Размер</th></tr></thead><tbody>`
+      + lfEvents.slice(0,25).map(e=>{
+          const d = new Date(e.t);
+          const hh = String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')
+                   + ':'+String(d.getSeconds()).padStart(2,'0');
+          const isL = e.side==='long';
+          return `<tr><td>${hh}</td>
+            <td style="font-family:var(--sans);color:${isL?'var(--long)':'var(--short)'}">${isL?'лонг':'шорт'}</td>
+            <td>${fmt(e.px, e.px<10?4:2)}</td><td>${usd(e.usd)}</td></tr>`;
+        }).join('') + '</tbody></table>'
+    : '';
+}
+
+document.getElementById('lf-ctl').addEventListener('click', e=>{
+  if(e.target.id!=='lf-on') return;
+  lfOn = !lfOn;
+  e.target.setAttribute('aria-pressed', lfOn);
+  e.target.textContent = lfOn ? 'Прекъсни' : 'Свържи';
+  if(lfOn){ lfRetry = 0; lfConnect(); }
+  else { lfClose(); lfStatus(0, 'изключено'); }
+  renderLf();
+});
+renderLf();
+
+/* ---------------- симулация на мрежа ---------------- */
+S.grInt='1h'; S.grLen=500;
+let grData = null, grRes = null;
+
+const grNum = id => {
+  const el = document.getElementById(id);
+  const v = parseFloat(String(el?el.value:'').replace(',', '.').trim());
+  return isFinite(v) ? v : null;
+};
+
+// Чиста функция: взима свещите и настройките, връща резултата.
+// Отделена, за да може да се провери без интерфейс.
+function gridSim(kl, cfg){
+  const { lo, hi, n, cap, feeRate } = cfg;
+  if(!(hi>lo) || n<2 || cap<=0) return null;
+
+  const step = (hi-lo)/(n-1);
+  const P = []; for(let i=0;i<n;i++) P.push(lo+i*step);
+
+  const entry = kl[0].o;
+  // стартово ниво: най-близкото до началната цена
+  let si = 0, best = Infinity;
+  P.forEach((p,i)=>{ const d=Math.abs(p-entry); if(d<best){ best=d; si=i; } });
+  const nBelow = si, nAbove = n-1-si;
+
+  let cash = cap, qty = 0, fees = 0;
+  let realized = 0, heldCost = 0;      // брутна цена на държаното, за разделянето
+
+  const buyAt = (px, dollars) => {
+    if(dollars<=0 || cash<dollars-1e-9) return 0;
+    const fee = dollars*feeRate;
+    const u = (dollars-fee)/px;
+    cash -= dollars; qty += u; fees += fee; heldCost += dollars;
+    return u;
+  };
+  const sellAt = (px, units, cost) => {
+    if(units<=0 || qty<units-1e-12) return 0;
+    const gross = units*px, fee = gross*feeRate, net = gross-fee;
+    cash += net; qty -= units; fees += fee;
+    realized += net - cost; heldCost -= cost;
+    return net;
+  };
+
+  // половината капитал влиза веднага в актив, за да има какво да се продава нагоре
+  const half = cap/2;
+  const startUnits = nAbove>0 ? buyAt(entry, half) : 0;
+
+  // нивата
+  const lv = P.map((px,i)=>({
+    px, i,
+    side: i<si ? 'buy' : i>si ? 'sell' : 'idle',
+    budget: i<si && nBelow>0 ? half/nBelow : 0,
+    units:  i>si && nAbove>0 ? startUnits/nAbove : 0,
+    cost:   i>si && nAbove>0 ? half/nAbove : 0,
+    fills: 0
+  }));
+
+  const trades = [];
+  const eqG = [], eqB = [], ts = [];
+  // купи и дръж: целият капитал в актив на старта, със същата такса
+  const bhUnits = (cap - cap*feeRate)/entry;
+
+  // Пътят вътре в свещта е неизвестен. Приемаме най-разпространената
+  // условност: при възходяща свещ open→low→high→close, при низходяща обратно.
+  for(let k=0;k<kl.length;k++){
+    const c = kl[k];
+    const path = c.c>=c.o ? [c.o,c.l,c.h,c.c] : [c.o,c.h,c.l,c.c];
+    for(let seg=0; seg<3; seg++){
+      const a = path[seg], b = path[seg+1];
+      if(b<a){
+        // пада: пълнят се покупките между b и a, отгоре надолу
+        for(let i=lv.length-1;i>=0;i--){
+          const L = lv[i];
+          if(L.side!=='buy' || L.px>a || L.px<b) continue;
+          const u = buyAt(L.px, L.budget);
+          if(u<=0) continue;
+          L.fills++; L.side='idle';
+          trades.push({ t:c.t, k:'buy', px:L.px, u, i });
+          const up = lv[i+1];
+          if(up){ up.units += u; up.cost += L.budget; up.side='sell'; }
+        }
+      } else if(b>a){
+        // расте: пълнят се продажбите между a и b, отдолу нагоре
+        for(let i=0;i<lv.length;i++){
+          const L = lv[i];
+          if(L.side!=='sell' || L.px<a || L.px>b) continue;
+          if(L.units<=1e-12) continue;
+          const u = L.units, cost = L.cost;
+          const net = sellAt(L.px, u, cost);
+          if(net<=0) continue;
+          L.fills++; L.units=0; L.cost=0; L.side='idle';
+          trades.push({ t:c.t, k:'sell', px:L.px, u, i });
+          const dn = lv[i-1];
+          if(dn){ dn.budget += net; dn.side='buy'; }
+        }
+      }
+    }
+    ts.push(c.t);
+    eqG.push(cash + qty*c.c);
+    eqB.push(bhUnits*c.c);
+  }
+
+  const last = kl[kl.length-1].c;
+  const value = cash + qty*last;
+  const total = value - cap;
+  const bhVal = bhUnits*last, bhPnl = bhVal - cap;
+  const float = qty*last - heldCost;
+
+  return { lv, trades, ts, eqG, eqB, entry, last, cash, qty, fees,
+           realized, float, total, bhPnl, value, bhVal, cap,
+           nTrades: trades.length, step, lo, hi, n };
+}
+
+async function loadGrid(){
+  const kl = await j(`${spotBase}/api/v3/klines?symbol=${S.sym}USDT&interval=${S.grInt}&limit=${S.grLen}`);
+  grData = kl.map(k=>({ t:k[0], o:+k[1], h:+k[2], l:+k[3], c:+k[4] }));
+  const lo = document.getElementById('gr-lo'), hi = document.getElementById('gr-hi');
+  if(!lo.value || !hi.value) grAuto();
+  runGrid();
+}
+
+function grAuto(){
+  if(!grData) return;
+  const L = Math.min(...grData.map(c=>c.l)), H = Math.max(...grData.map(c=>c.h));
+  const d = (H-L)*0.02;
+  const dp = H<10 ? 4 : 2;
+  document.getElementById('gr-lo').value = (L+d).toFixed(dp);
+  document.getElementById('gr-hi').value = (H-d).toFixed(dp);
+}
+
+function runGrid(){
+  if(!grData) return;
+  grRes = gridSim(grData, {
+    lo: grNum('gr-lo'), hi: grNum('gr-hi'),
+    n: Math.max(2, Math.min(200, Math.round(grNum('gr-n')||20))),
+    cap: grNum('gr-cap')||10000,
+    feeRate: (grNum('gr-fee') ?? 0.05)/100
+  });
+  drawGrid();
+}
+
+function drawGrid(){
+  const out = document.getElementById('gr-out');
+  const cv = document.getElementById('grchart'), g = cv.getContext('2d');
+  const eq = document.getElementById('greq'), ge = eq.getContext('2d');
+  g.clearRect(0,0,cv.width,cv.height); ge.clearRect(0,0,eq.width,eq.height);
+  const R = grRes;
+  if(!R){ out.innerHTML = '<span style="color:var(--ink-dim);font-size:13px">Провери границите и броя нива.</span>';
+          document.getElementById('gr-levels').innerHTML=''; return; }
+
+  const css = getComputedStyle(document.documentElement);
+  const dim=css.getPropertyValue('--ink-dim').trim(), rule=css.getPropertyValue('--rule').trim();
+  const ink=css.getPropertyValue('--ink').trim();
+  const A=css.getPropertyValue('--long').trim(), T=css.getPropertyValue('--short').trim();
+
+  const vs = R.total - R.bhPnl;
+  out.innerHTML =
+    `<div><b class="${R.total>=0?'pos':'neg'}">${R.total>=0?'+':'−'}${usd(Math.abs(R.total))}</b><span>общо · ${pct(R.total/R.cap*100)}</span></div>
+     <div><b class="${R.realized>=0?'pos':'neg'}">${R.realized>=0?'+':'−'}${usd(Math.abs(R.realized))}</b><span>реализирано</span></div>
+     <div><b class="${R.float>=0?'pos':'neg'}">${R.float>=0?'+':'−'}${usd(Math.abs(R.float))}</b><span>нереализирано</span></div>
+     <div><b class="neg">−${usd(R.fees)}</b><span>такси</span></div>
+     <div><b>${R.nTrades}</b><span>сделки</span></div>
+     <div><b class="${R.bhPnl>=0?'pos':'neg'}">${R.bhPnl>=0?'+':'−'}${usd(Math.abs(R.bhPnl))}</b><span>купи и дръж</span></div>
+     <div><b class="${vs>=0?'pos':'neg'}">${vs>=0?'+':'−'}${usd(Math.abs(vs))}</b><span>мрежа срещу държане</span></div>`;
+
+  // --- цена и нива ---
+  const n = grData.length, W=cv.width, H=cv.height, pad={l:8,r:88,t:14,b:26};
+  const all = grData.flatMap(c=>[c.h,c.l]).concat([R.lo,R.hi]);
+  const mn = Math.min(...all), mx = Math.max(...all);
+  const PW=W-pad.l-pad.r, PH=H-pad.t-pad.b;
+  const x = i => pad.l + i*PW/(n-1);
+  const y = v => pad.t + (mx-v)/((mx-mn)||1)*PH;
+
+  g.font = '400 19px '+css.getPropertyValue('--mono');
+  R.lv.forEach(L=>{
+    const col = L.side==='buy' ? A : L.side==='sell' ? T : rule;
+    g.strokeStyle = col + (L.fills?'99':'44'); g.lineWidth = L.fills?1.6:1;
+    g.beginPath(); g.moveTo(pad.l,y(L.px)); g.lineTo(W-pad.r,y(L.px)); g.stroke();
+  });
+
+  g.beginPath();
+  grData.forEach((c,i)=> i?g.lineTo(x(i),y(c.c)):g.moveTo(x(i),y(c.c)));
+  g.strokeStyle = dim; g.lineWidth=1.8; g.stroke();
+
+  // изпълнения
+  R.trades.forEach(tr=>{
+    const i = grData.findIndex(c=>c.t===tr.t); if(i<0) return;
+    g.beginPath(); g.arc(x(i), y(tr.px), 2.6, 0, Math.PI*2);
+    g.fillStyle = tr.k==='buy'?A:T; g.fill();
+  });
+
+  g.fillStyle = dim;
+  [mx, (mx+mn)/2, mn].forEach(v=>g.fillText(fmt(v, v<10?3:0), W-pad.r+9, y(v)+7));
+
+  // --- сравнение на стойността ---
+  const EW=eq.width, EH=eq.height, ep={l:8,r:88,t:12,b:22};
+  const ea = R.eqG.concat(R.eqB);
+  const emn = Math.min(...ea), emx = Math.max(...ea);
+  const ex = i => ep.l + i*(EW-ep.l-ep.r)/(n-1);
+  const ey = v => ep.t + (emx-v)/((emx-emn)||1)*(EH-ep.t-ep.b);
+  ge.strokeStyle = rule; ge.lineWidth=1;
+  ge.beginPath(); ge.moveTo(ep.l,ey(R.cap)); ge.lineTo(EW-ep.r,ey(R.cap)); ge.stroke();
+  [[R.eqB,dim,1.6],[R.eqG,ink,2.2]].forEach(([arr,col,w])=>{
+    ge.beginPath(); arr.forEach((v,i)=> i?ge.lineTo(ex(i),ey(v)):ge.moveTo(ex(i),ey(v)));
+    ge.strokeStyle = col; ge.lineWidth = w; ge.stroke();
+  });
+  ge.font = '400 19px '+css.getPropertyValue('--mono'); ge.fillStyle = dim;
+  ge.fillText(usd(emx), EW-ep.r+9, ey(emx)+12);
+  ge.fillText(usd(R.cap), EW-ep.r+9, ey(R.cap)+6);
+
+  // --- таблица ---
+  const used = R.lv.filter(L=>L.fills>0).sort((a,b)=>b.px-a.px);
+  document.getElementById('gr-levels').innerHTML = used.length
+    ? `<table><thead><tr><th>Цена</th><th>Състояние</th><th>Изпълнения</th></tr></thead><tbody>`
+      + used.slice(0,16).map(L=>`<tr><td>${fmt(L.px, L.px<10?4:2)}</td>
+          <td style="font-family:var(--sans);color:${L.side==='buy'?'var(--long)':L.side==='sell'?'var(--short)':'var(--ink-dim)'}">${L.side==='buy'?'чака покупка':L.side==='sell'?'чака продажба':'празно'}</td>
+          <td>${L.fills}</td></tr>`).join('') + '</tbody></table>'
+    : '<div class="empty">Нито едно ниво не се е задействало — цената не е влизала в мрежата.</div>';
+}
+
+document.getElementById('gr-int').addEventListener('click', e=>{
+  const b = e.target.closest('button[data-gi]'); if(!b) return;
+  S.grInt = b.dataset.gi;
+  document.querySelectorAll('#gr-int button').forEach(x=>x.setAttribute('aria-pressed', x===b));
+  document.getElementById('gr-lo').value=''; document.getElementById('gr-hi').value='';
+  loadGrid().catch(()=>{});
+});
+document.getElementById('gr-len').addEventListener('click', e=>{
+  const b = e.target.closest('button[data-gl]'); if(!b) return;
+  S.grLen = +b.dataset.gl;
+  document.querySelectorAll('#gr-len button').forEach(x=>x.setAttribute('aria-pressed', x===b));
+  document.getElementById('gr-lo').value=''; document.getElementById('gr-hi').value='';
+  loadGrid().catch(()=>{});
+});
+document.getElementById('gr-acts').addEventListener('click', e=>{
+  if(e.target.id==='gr-auto'){ grAuto(); runGrid(); }
+  if(e.target.id==='gr-run') runGrid();
+});
+document.querySelectorAll('#tab-grid .fgrid input').forEach(el=>el.addEventListener('input', runGrid));
+
+document.getElementById('gr-help').innerHTML = `
+  <p><b>Как работи мрежата.</b> Диапазонът се дели на равни нива. Половината капитал влиза веднага в актив, за да има какво да се продава нагоре; другата половина остава в пари за покупките надолу. Всяка изпълнена покупка поставя продажба едно ниво по-горе, всяка продажба връща пари за покупка едно ниво по-долу. Печалбата идва от люлеенето, не от посоката.</p>
+  <p><b>Пътят вътре в свещта.</b> Борсата дава само отваряне, връх, дъно и затваряне — не и реда, в който са се случили. Приемам обичайната условност: при възходяща свещ цената минава отваряне → дъно → връх → затваряне, при низходяща обратно. При по-дребни интервали грешката от това допускане намалява.</p>
+  <p><b>Таксите се броят при всяка сделка</b>, и при покупка, и при продажба. Мрежа с много нива прави повече сделки и плаща повече — затова при 0,05% и гъста мрежа таксите лесно изяждат разликата от люлеенето.</p>
+  <p><b>Числото, което има значение,</b> е последното: мрежа срещу просто държане. Мрежата печели в страничен пазар и губи в силен тренд, защото продава рано нагоре и остава без пари надолу. Ако излезе по-зле от държането, стратегията не е сгрешила — просто периодът не е бил за нея.</p>
+  <p><b>Защо това не е прогноза.</b> Границите ги избираш ти, след като вече знаеш какво е направила цената. Това е най-лесният начин да се самозаблудиш. Честният тест е да избереш границите по първата половина от периода и да видиш какво става във втората.</p>`;
+
+/* ---------------- оптимална стъпка на мрежата ---------------- */
+let grOpt = null;
+
+// Прагът от таксите: под тази стъпка всяка завършена обиколка губи.
+// Купуваш за D, остават D(1−f)/P единици; продаваш на P(1+δ) и остават
+// D(1−f)²(1+δ). Нулата е при (1−f)²(1+δ) = 1.
+const grFeeFloor = f => 1/Math.pow(1-f,2) - 1;
+
+function grSweep(){
+  if(!grData) return null;
+  const lo = grNum('gr-lo'), hi = grNum('gr-hi');
+  const cap = grNum('gr-cap')||10000, feeRate = (grNum('gr-fee') ?? 0.05)/100;
+  if(!(hi>lo)) return null;
+
+  const half = Math.floor(grData.length/2);
+  const first = grData.slice(0, half), second = grData.slice(half);
+  const ns = [];
+  for(let n=3;n<=80;n++) ns.push(n);
+
+  const run = (data, n) => {
+    const r = gridSim(data, { lo, hi, n, cap, feeRate });
+    return r ? r.total : null;
+  };
+
+  const full = ns.map(n=>run(grData, n));
+  const f1   = ns.map(n=>run(first, n));
+  const f2   = ns.map(n=>run(second, n));
+
+  const pick = arr => { let bi=0, bv=-Infinity;
+    arr.forEach((v,i)=>{ if(v!=null && v>bv){ bv=v; bi=i; } }); return { n:ns[bi], v:bv, i:bi }; };
+
+  const bFull = pick(full), b1 = pick(f1), b2 = pick(f2);
+  // колко дава на втората половина изборът, направен по първата
+  const carried = f2[b1.i];
+
+  const mid = (lo+hi)/2;
+  const stepPct = n => ((hi-lo)/(n-1))/mid*100;
+
+  // средно абсолютно движение на свещ — стъпка под него почти не се задейства
+  let mv = 0, cnt = 0;
+  for(let i=1;i<grData.length;i++){
+    const a = grData[i-1].c, b = grData[i].c;
+    if(a>0){ mv += Math.abs(b/a-1); cnt++; }
+  }
+  const avgMove = cnt ? mv/cnt*100 : 0;
+
+  return { ns, full, f1, f2, bFull, b1, b2, carried, stepPct,
+           feeFloorPct: grFeeFloor(feeRate)*100, avgMove, lo, hi, cap, feeRate, half };
+}
+
+function drawOpt(){
+  const O = grOpt;
+  const wrap = document.getElementById('gr-optwrap');
+  const st = document.getElementById('gr-optstats');
+  const cv = document.getElementById('gropt'), g = cv.getContext('2d');
+  g.clearRect(0,0,cv.width,cv.height);
+  if(!O){ st.innerHTML = '<span style="color:var(--ink-dim);font-size:13px">Провери границите.</span>'; return; }
+  wrap.hidden = false;
+
+  const css = getComputedStyle(document.documentElement);
+  const dim=css.getPropertyValue('--ink-dim').trim(), rule=css.getPropertyValue('--rule').trim();
+  const ink=css.getPropertyValue('--ink').trim(), hot=css.getPropertyValue('--hot').trim();
+
+  st.innerHTML =
+    `<div><b>${O.bFull.n}</b><span>най-добър брой нива</span></div>
+     <div><b>${fmt(O.stepPct(O.bFull.n),2)}%</b><span>стъпка при него</span></div>
+     <div><b class="${O.bFull.v>=0?'pos':'neg'}">${O.bFull.v>=0?'+':'−'}${usd(Math.abs(O.bFull.v))}</b><span>резултат</span></div>
+     <div><b class="neg">${fmt(O.feeFloorPct,3)}%</b><span>праг на таксите</span></div>
+     <div><b>${fmt(O.avgMove,2)}%</b><span>средно движение на свещ</span></div>`;
+
+  const W=cv.width, H=cv.height, pad={l:8,r:88,t:14,b:28};
+  const PW=W-pad.l-pad.r, PH=H-pad.t-pad.b;
+  const vals = O.full.concat(O.f2).filter(v=>v!=null);
+  const mn = Math.min(0, ...vals), mx = Math.max(0, ...vals);
+  const x = i => pad.l + i*PW/(O.ns.length-1);
+  const y = v => pad.t + (mx-v)/((mx-mn)||1)*PH;
+
+  g.strokeStyle = rule; g.lineWidth=1;
+  g.font = '400 19px '+css.getPropertyValue('--mono');
+  for(let k=0;k<=3;k++){
+    const yy = pad.t+k*PH/3, v = mx-k*(mx-mn)/3;
+    g.beginPath(); g.moveTo(pad.l,yy); g.lineTo(W-pad.r,yy); g.stroke();
+    g.fillStyle = dim; g.fillText((v>=0?'+':'−')+usd(Math.abs(v)), W-pad.r+9, yy+7);
+  }
+  if(mn<0 && mx>0){
+    g.strokeStyle = dim; g.lineWidth=1.4; g.setLineDash([5,5]);
+    g.beginPath(); g.moveTo(pad.l,y(0)); g.lineTo(W-pad.r,y(0)); g.stroke(); g.setLineDash([]);
+  }
+
+  // броят нива, при който стъпката пада под прага на таксите
+  const nFloor = O.ns.findIndex(n=>O.stepPct(n) < O.feeFloorPct);
+  if(nFloor>0){
+    g.fillStyle = hot+'1E'; g.fillRect(x(nFloor), pad.t, PW-x(nFloor)+pad.l, PH);
+    g.strokeStyle = hot; g.lineWidth=1.5; g.setLineDash([6,5]);
+    g.beginPath(); g.moveTo(x(nFloor),pad.t); g.lineTo(x(nFloor),pad.t+PH); g.stroke(); g.setLineDash([]);
+  }
+
+  [[O.f2, dim, 1.6], [O.full, ink, 2.4]].forEach(([arr,col,w])=>{
+    g.beginPath(); let st2=false;
+    arr.forEach((v,i)=>{ if(v==null) return; st2?g.lineTo(x(i),y(v)):(g.moveTo(x(i),y(v)),st2=true); });
+    g.strokeStyle=col; g.lineWidth=w; g.stroke();
+  });
+
+  g.beginPath(); g.arc(x(O.bFull.i), y(O.bFull.v), 5, 0, Math.PI*2);
+  g.fillStyle = ink; g.fill();
+
+  g.fillStyle = dim;
+  [0, Math.floor(O.ns.length/2), O.ns.length-1].forEach(i=>{
+    const t = O.ns[i]+' · '+fmt(O.stepPct(O.ns[i]),2)+'%';
+    const tw = g.measureText(t).width;
+    g.fillText(t, Math.max(pad.l, Math.min(W-pad.r-tw, x(i)-tw/2)), H-8);
+  });
+
+  const drop = O.bFull.v ? (1 - O.carried/Math.max(1e-9,O.b2.v))*100 : 0;
+  document.getElementById('gr-optread').innerHTML =
+    `<p><b>Прагът от таксите.</b> При такса ${fmt(O.feeRate*100,3)}% всяка обиколка трябва да покрие две такси, затова стъпка под <b>${fmt(O.feeFloorPct,3)}%</b> губи по дефиниция, колкото и да се люлее цената. В защрихованата част вдясно мрежата е под този праг — там повече нива само раздробяват капитала и плащат повече.</p>
+     <p><b>Съответствие с движението.</b> Средната свещ мести цената с <b>${fmt(O.avgMove,2)}%</b>. Стъпка, много по-голяма от това, се задейства рядко; стъпка, много по-малка, прави сделки за стотинки. Разумният диапазон е между прага на таксите и няколко пъти средното движение.</p>
+     <p><b>Проверката, която има значение.</b> Най-добрият избор за целия период е <b>${O.bFull.n}</b> нива. Но ако избереш по първата половина, най-доброто там е <b>${O.b1.n}</b> нива — а на втората половина то дава <b>${O.carried>=0?'+':'−'}${usd(Math.abs(O.carried))}</b>, при положение че най-доброто за самата втора половина е <b>${O.b2.n}</b> нива с <b>${O.b2.v>=0?'+':'−'}${usd(Math.abs(O.b2.v))}</b>. Разликата между двете е цената на това, че оптимумът се мести.</p>
+     <p>Сивата линия е резултатът само за втората половина. Ако нейният връх е далеч от върха на бялата, значи оптимумът не е устойчив и напасването по миналото не ти казва почти нищо за следващия период.</p>`;
+}
+
+document.getElementById('gr-acts').addEventListener('click', e=>{
+  if(e.target.id!=='gr-opt') return;
+  e.target.textContent = 'Смята…';
+  setTimeout(()=>{
+    grOpt = grSweep(); drawOpt();
+    e.target.textContent = 'Намери стъпката';
+  }, 20);
+});
 
 /* ---------------- оркестрация ---------------- */
 async function refresh(){
