@@ -136,6 +136,14 @@ canvas{width:100%;height:290px;display:block;
 .warn b{color:var(--ink);font-weight:500}
 .note{font-size:12px;color:var(--ink-dim);line-height:1.55;max-width:58ch;margin:-6px 0 18px}
 .note b{color:var(--ink);font-weight:500}
+.fgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px;max-width:62ch}
+.fgrid label{display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--ink-dim)}
+.fgrid input{background:var(--panel);border:1px solid var(--rule);color:var(--ink);
+  padding:9px 10px;border-radius:2px;font:inherit;font-size:15px;font-family:var(--mono);width:100%}
+.fgrid input:focus{outline:none;border-color:var(--ink)}
+#cachart{height:290px;touch-action:pan-y;user-select:none;-webkit-user-select:none}
+#ca-help p{font-size:13px;color:var(--ink-dim);line-height:1.6;margin-bottom:10px;max-width:60ch}
+#ca-help b{color:var(--ink);font-weight:500}
 .slider{margin-bottom:20px;max-width:58ch}
 .slider label{display:flex;justify-content:space-between;align-items:baseline;font-size:14px;margin-bottom:8px}
 .slider label b{font-family:var(--mono);font-weight:500}
@@ -255,6 +263,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
   <button data-tab="meas" aria-pressed="false">Измерване</button>
   <button data-tab="vp" aria-pressed="false">Профил</button>
   <button data-tab="liq" aria-pressed="false">Ликвидации</button>
+  <button data-tab="calc" aria-pressed="false">Калкулатор</button>
 </div>
 
 <div class="controls" id="symbols">
@@ -692,8 +701,51 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
   </section>
 </div>
 
+<div id="tab-calc" hidden>
+  <div class="controls" id="ca-side">
+    <button data-cs="long" aria-pressed="true">Лонг</button>
+    <button data-cs="short">Шорт</button>
+  </div>
+
+  <div class="fgrid">
+    <label>Вход<input id="ca-entry" type="text" inputmode="decimal" placeholder="цена"></label>
+    <label>Ливъридж<input id="ca-lev" type="text" inputmode="decimal" value="10"></label>
+    <label>Маржин USD<input id="ca-margin" type="text" inputmode="decimal" value="1000"></label>
+    <label>Такса %<input id="ca-fee" type="text" inputmode="decimal" value="0.05"></label>
+    <label>Поддържащ марж %<input id="ca-mmr" type="text" inputmode="decimal" value="0.4"></label>
+    <label>Фъндинг периоди<input id="ca-fp" type="text" inputmode="decimal" value="1"></label>
+    <label>Take profit<input id="ca-tp" type="text" inputmode="decimal" placeholder="по желание"></label>
+    <label>Stop loss<input id="ca-sl" type="text" inputmode="decimal" placeholder="по желание"></label>
+  </div>
+  <div class="controls" id="ca-acts">
+    <button id="ca-now">Вход по текуща</button>
+    <button id="ca-r1">SL −2% / TP +4%</button>
+    <button id="ca-r2">SL −5% / TP +10%</button>
+    <button id="ca-clear">Изчисти целите</button>
+  </div>
+
+  <div id="ca-out" class="stats"></div>
+
+  <canvas id="cachart" width="1400" height="520"></canvas>
+  <div class="legend">
+    <span><i style="background:var(--ink)"></i>нетна печалба при цена</span>
+    <span><i style="background:var(--hot);height:9px"></i>ликвидация</span>
+    <span><i style="background:var(--ink-dim);height:9px"></i>вход · текуща</span>
+  </div>
+
+  <section style="margin-top:22px">
+    <h2>Нива</h2>
+    <div id="ca-levels"></div>
+  </section>
+
+  <section>
+    <h2>Как се смята</h2>
+    <div id="ca-help"></div>
+  </section>
+</div>
+
 <footer>
-  <span style="font-family:var(--mono);color:var(--ink)">версия 33</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
+  <span style="font-family:var(--mono);color:var(--ink)">версия 34</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
   Фъндингът и откритият интерес идват от публичните API-та на Binance, Bybit, OKX и Hyperliquid.
   Ако някоя борса покаже грешка, най-честата причина е блокиране по регион или ограничение на заявките — изчакай минута и обнови.
 </footer>
@@ -1655,6 +1707,8 @@ document.getElementById('tabs').addEventListener('click', e=>{
   document.getElementById('tab-meas').hidden  = S.tab!=='meas';
   document.getElementById('tab-vp').hidden    = S.tab!=='vp';
   document.getElementById('tab-liq').hidden   = S.tab!=='liq';
+  document.getElementById('tab-calc').hidden  = S.tab!=='calc';
+  if(S.tab==='calc') loadCalc();
   if(S.tab==='liq') loadLq().catch(e=>{
     document.getElementById('lq-levels').innerHTML =
       `<div class="empty">Няма достъп до данните. Причина: ${e.message||e}</div>`; });
@@ -4079,6 +4133,228 @@ document.getElementById('lq-rules').addEventListener('click', e=>{
   else return;
   if(lq){ buildLq(); lqShowView(); }
 });
+
+/* ---------------- калкулатор за позиция ---------------- */
+S.caLong = true;
+let caFunding = 0;      // текущ фъндинг за 8 часа, в части от единица
+
+const caNum = id => {
+  const el = document.getElementById(id);
+  if(!el) return null;
+  const v = parseFloat(String(el.value).replace(',', '.').trim());
+  return isFinite(v) ? v : null;
+};
+
+// Нетният резултат при дадена цена. Отделена като чиста функция, за да е проверима:
+// връща и как е приключила позицията, не само числото.
+function caPnlAt(price, P){
+  const { entry, qty, lev, margin, openFee, feeRate, liq, tp, sl, isLong, funding } = P;
+  const hit = (lvl, below) => lvl!=null && (below ? price<=lvl : price>=lvl);
+
+  // ликвидацията се проверява първа само ако е по-близо от стопа
+  const slFirst = sl!=null && (isLong ? sl>liq : sl<liq);
+  const closeAt = v => {
+    const gross = isLong ? (v-entry)*qty : (entry-v)*qty;
+    return gross - openFee - v*qty*feeRate - funding;
+  };
+
+  if(isLong){
+    if(hit(tp,false)) return { v:closeAt(tp), how:'TP' };
+    if(slFirst && hit(sl,true)) return { v:closeAt(sl), how:'SL' };
+    if(price<=liq) return { v:-margin, how:'ликвидация' };
+    if(hit(sl,true)) return { v:closeAt(sl), how:'SL' };
+  } else {
+    if(hit(tp,true)) return { v:closeAt(tp), how:'TP' };
+    if(slFirst && hit(sl,false)) return { v:closeAt(sl), how:'SL' };
+    if(price>=liq) return { v:-margin, how:'ликвидация' };
+    if(hit(sl,false)) return { v:closeAt(sl), how:'SL' };
+  }
+  return { v:closeAt(price), how:'отворена' };
+}
+
+function caParams(){
+  const entry = caNum('ca-entry'), lev = caNum('ca-lev'), margin = caNum('ca-margin');
+  if(!entry || !lev || !margin || entry<=0 || lev<=0 || margin<=0) return null;
+  const feeRate = (caNum('ca-fee') ?? 0)/100;
+  const mmr = (caNum('ca-mmr') ?? 0)/100;
+  const periods = caNum('ca-fp') ?? 1;
+  const isLong = S.caLong;
+
+  const notional = margin*lev;
+  const qty = notional/entry;
+  const openFee = notional*feeRate;
+
+  // Ликвидацията настъпва, когато загубата изяде маржина до поддържащото ниво,
+  // тоест при ход от (1/ливъридж − поддържащ марж), не от цели 1/ливъридж.
+  const off = Math.max(0, 1/lev - mmr);
+  const liq = isLong ? entry*(1-off) : entry*(1+off);
+
+  // Лонговете плащат при положителен фъндинг, шортовете получават
+  const funding = notional * caFunding * periods * (isLong ? 1 : -1);
+
+  let tp = caNum('ca-tp'), sl = caNum('ca-sl');
+  if(tp!=null && tp<=0) tp=null;
+  if(sl!=null && sl<=0) sl=null;
+
+  return { entry, lev, margin, feeRate, mmr, periods, isLong,
+           notional, qty, openFee, liq, funding, tp, sl, off };
+}
+
+function drawCalc(){
+  const P = caParams();
+  const out = document.getElementById('ca-out');
+  const lv = document.getElementById('ca-levels');
+  const cv = document.getElementById('cachart'), g = cv.getContext('2d');
+  g.clearRect(0,0,cv.width,cv.height);
+  if(!P){
+    out.innerHTML = '<span style="color:var(--ink-dim);font-size:13px">Попълни вход, ливъридж и маржин.</span>';
+    lv.innerHTML = ''; return;
+  }
+
+  const live = (price && price.c && price.c.length) ? price.c[price.c.length-1] : null;
+  const now = live!=null ? caPnlAt(live, P) : null;
+  const atTP = P.tp!=null ? caPnlAt(P.tp, P) : null;
+  const atSL = P.sl!=null ? caPnlAt(P.sl, P) : null;
+  const toLiq = (P.liq/P.entry-1)*100;
+
+  out.innerHTML =
+    `<div><b>${usd(P.notional)}</b><span>размер на позицията</span></div>
+     <div><b>${fmt(P.qty, P.qty<1?6:3)}</b><span>количество ${S.sym}</span></div>
+     <div><b class="neg">${fmt(P.liq, P.liq<10?4:2)}</b><span>ликвидация · ${pct(toLiq)}</span></div>
+     <div><b>${usd(P.openFee)}</b><span>такса при отваряне</span></div>
+     ${P.funding!==0?`<div><b class="${P.funding<=0?'pos':'neg'}">${P.funding<=0?'+':'−'}${usd(Math.abs(P.funding))}</b><span>фъндинг за ${fmt(P.periods,0)} п.</span></div>`:''}
+     ${now?`<div><b class="${now.v>=0?'pos':'neg'}">${now.v>=0?'+':'−'}${usd(Math.abs(now.v))}</b><span>сега · ${pct(now.v/P.margin*100)}</span></div>`:''}`;
+
+  // --- графика на нетния резултат срещу цената ---
+  const css = getComputedStyle(document.documentElement);
+  const dim=css.getPropertyValue('--ink-dim').trim(), rule=css.getPropertyValue('--rule').trim();
+  const ink=css.getPropertyValue('--ink').trim(), hot=css.getPropertyValue('--hot').trim();
+  const UP=css.getPropertyValue('--up').trim(), DN=css.getPropertyValue('--down').trim();
+
+  const W=cv.width, H=cv.height, pad={l:8,r:92,t:16,b:30};
+  const anchors = [P.entry, P.liq, P.tp, P.sl, live].filter(v=>v!=null && isFinite(v));
+  let lo = Math.min(...anchors), hi = Math.max(...anchors);
+  const padp = (hi-lo)*0.12 || P.entry*0.05;
+  lo = Math.max(0, lo-padp); hi = hi+padp;
+
+  const N = 400;
+  const pts = [];
+  for(let k=0;k<=N;k++){ const pr = lo + (hi-lo)*k/N; pts.push({ pr, v:caPnlAt(pr,P).v }); }
+  let vmn = Math.min(...pts.map(q=>q.v)), vmx = Math.max(...pts.map(q=>q.v));
+  const vpad = (vmx-vmn)*0.1 || P.margin*0.1;
+  vmn -= vpad; vmx += vpad;
+
+  const PW=W-pad.l-pad.r, PH=H-pad.t-pad.b;
+  const x = pr => pad.l + (pr-lo)/((hi-lo)||1)*PW;
+  const y = v => pad.t + (vmx-v)/((vmx-vmn)||1)*PH;
+
+  g.strokeStyle = rule; g.lineWidth=1;
+  g.font = '400 20px '+css.getPropertyValue('--mono');
+  for(let k=0;k<=4;k++){
+    const yy = pad.t + k*PH/4, v = vmx - k*(vmx-vmn)/4;
+    g.beginPath(); g.moveTo(pad.l,yy); g.lineTo(W-pad.r,yy); g.stroke();
+    g.fillStyle = dim; g.fillText((v>=0?'+':'−')+usd(Math.abs(v)), W-pad.r+9, yy+7);
+  }
+
+  // нулевата линия е по-важна от останалите
+  if(vmn<0 && vmx>0){
+    g.strokeStyle = dim; g.lineWidth=1.5; g.setLineDash([5,5]);
+    g.beginPath(); g.moveTo(pad.l,y(0)); g.lineTo(W-pad.r,y(0)); g.stroke(); g.setLineDash([]);
+  }
+
+  // площ под и над нулата
+  [[true,UP],[false,DN]].forEach(([pos,col])=>{
+    g.beginPath(); let open=false;
+    pts.forEach((q,i)=>{
+      const inSide = pos ? q.v>=0 : q.v<0;
+      if(inSide){ if(!open){ g.moveTo(x(q.pr), y(0)); open=true; } g.lineTo(x(q.pr), y(q.v)); }
+      else if(open){ g.lineTo(x(pts[i-1].pr), y(0)); g.closePath(); g.fillStyle=col+'26'; g.fill(); open=false; g.beginPath(); }
+    });
+    if(open){ g.lineTo(x(pts[pts.length-1].pr), y(0)); g.closePath(); g.fillStyle=col+'26'; g.fill(); }
+  });
+
+  g.beginPath();
+  pts.forEach((q,i)=> i?g.lineTo(x(q.pr),y(q.v)):g.moveTo(x(q.pr),y(q.v)));
+  g.strokeStyle = ink; g.lineWidth=2.5; g.stroke();
+
+  const vline = (pr, col, label) => {
+    if(pr==null || pr<lo || pr>hi) return;
+    g.strokeStyle = col; g.lineWidth=1.5; g.setLineDash([6,5]);
+    g.beginPath(); g.moveTo(x(pr),pad.t); g.lineTo(x(pr),pad.t+PH); g.stroke(); g.setLineDash([]);
+    g.font = '400 19px '+css.getPropertyValue('--mono'); g.fillStyle = col;
+    const tw = g.measureText(label).width;
+    g.fillText(label, Math.max(pad.l+2, Math.min(W-pad.r-tw, x(pr)-tw/2)), pad.t-3);
+  };
+  vline(P.liq, hot, 'ликв');
+  vline(P.entry, dim, 'вход');
+  if(P.tp!=null) vline(P.tp, UP, 'TP');
+  if(P.sl!=null) vline(P.sl, DN, 'SL');
+  if(live!=null) vline(live, ink, 'сега');
+
+  g.font = '400 20px '+css.getPropertyValue('--mono'); g.fillStyle = dim;
+  g.fillText(fmt(lo, lo<10?3:0), pad.l, H-8);
+  const tx = fmt(hi, hi<10?3:0);
+  g.fillText(tx, W-pad.r-g.measureText(tx).width, H-8);
+
+  // --- таблица ---
+  const rows = [['Вход', P.entry, '—', null]];
+  if(live!=null) rows.push(['Текуща', live, now.how, now.v]);
+  if(P.tp!=null) rows.push(['Take profit', P.tp, 'TP', atTP.v]);
+  if(P.sl!=null) rows.push(['Stop loss', P.sl, 'SL', atSL.v]);
+  rows.push(['Ликвидация', P.liq, 'ликвидация', -P.margin]);
+
+  lv.innerHTML = `<table><thead><tr><th>Ниво</th><th>Цена</th><th>Разстояние</th><th>Нетно</th><th>ROE</th></tr></thead><tbody>`
+    + rows.map(([nm,pr,how,v])=>{
+        const dd = (pr/P.entry-1)*100;
+        return `<tr><td style="font-family:var(--sans)">${nm}</td>
+          <td>${fmt(pr, pr<10?4:2)}</td>
+          <td class="${dd>=0?'pos':'neg'}">${nm==='Вход'?'—':pct(dd)}</td>
+          <td class="${v==null?'':(v>=0?'pos':'neg')}">${v==null?'—':(v>=0?'+':'−')+usd(Math.abs(v))}</td>
+          <td class="${v==null?'':(v>=0?'pos':'neg')}">${v==null?'—':pct(v/P.margin*100)}</td></tr>`;
+      }).join('') + '</tbody></table>';
+}
+
+async function loadCalc(){
+  // текущият фъндинг за 8 часа, за да е реална цената на държането
+  try{
+    const d = await j(`https://fapi.binance.com/fapi/v1/premiumIndex?symbol=${S.sym}USDT`);
+    caFunding = parseFloat(d.lastFundingRate) || 0;
+  }catch(e){ caFunding = 0; }
+  const el = document.getElementById('ca-entry');
+  if(el && !el.value && price && price.c && price.c.length)
+    el.value = price.c[price.c.length-1];
+  drawCalc();
+}
+
+document.getElementById('ca-side').addEventListener('click', e=>{
+  const b = e.target.closest('button[data-cs]'); if(!b) return;
+  S.caLong = b.dataset.cs==='long';
+  document.querySelectorAll('#ca-side button').forEach(x=>x.setAttribute('aria-pressed', x===b));
+  drawCalc();
+});
+document.querySelectorAll('.fgrid input').forEach(el=>el.addEventListener('input', drawCalc));
+document.getElementById('ca-acts').addEventListener('click', e=>{
+  const id = e.target.id;
+  const ent = document.getElementById('ca-entry');
+  const live = (price && price.c && price.c.length) ? price.c[price.c.length-1] : null;
+  if(id==='ca-now' && live!=null){ ent.value = live; }
+  if(id==='ca-clear'){ document.getElementById('ca-tp').value=''; document.getElementById('ca-sl').value=''; }
+  if(id==='ca-r1' || id==='ca-r2'){
+    const e0 = caNum('ca-entry'); if(!e0) return;
+    const s = id==='ca-r1' ? 0.02 : 0.05, t = s*2;
+    const k = S.caLong ? 1 : -1;
+    document.getElementById('ca-sl').value = (e0*(1-s*k)).toFixed(e0<10?4:2);
+    document.getElementById('ca-tp').value = (e0*(1+t*k)).toFixed(e0<10?4:2);
+  }
+  drawCalc();
+});
+
+document.getElementById('ca-help').innerHTML = `
+  <p><b>Ликвидационната цена</b> се смята с поддържащия марж, не само с ливъриджа. Позицията не се затваря, когато загубата изяде целия маржин, а когато го свали до поддържащото ниво. Затова ходът до ликвидация е <b>1/ливъридж минус поддържащ марж</b>, а не цели 1/ливъридж. При 10x и 0,4% това е 9,6% вместо 10% — ликвидацията е по-близо, отколкото подсказва простата сметка. Поддържащият марж при Binance расте със размера на позицията; 0,4% е първото стъпало за големите пазари, затова е по подразбиране.</p>
+  <p><b>Таксите</b> се броят два пъти: веднъж при отваряне върху целия размер и веднъж при затваряне върху цената, на която излизаш. 0,05% е taker при Binance; ако влизаш с лимитна поръчка, сложи 0,02%.</p>
+  <p><b>Фъндингът</b> се плаща на всеки 8 часа, а не еднократно. Затова има поле за брой периоди — ден държане са три. Лонговете плащат при положителен фъндинг и получават при отрицателен; за шортовете е обратно. Тегля текущата стойност за избрания актив, но тя се мени и миналото не гарантира бъдещето.</p>
+  <p><b>При ликвидация</b> показвам загуба точно колкото маржина. На практика е малко повече заради таксата при принудителното затваряне и възможното подхлъзване, а при много голям ход може да мине и отвъд.</p>
+  <p><b>Графиката</b> показва нетния резултат при всяка цена, след всички такси. Плоските участъци в краищата са там, защото позицията вече е затворена — на TP, на SL или чрез ликвидация.</p>`;
 
 /* ---------------- оркестрация ---------------- */
 async function refresh(){
