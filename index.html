@@ -853,7 +853,10 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
       <span><i style="background:var(--ink)"></i>начална покупка</span>
     </div>
     <div id="gl-list"></div>
-    <p class="note">Стартира празна мрежа по текущата цена и настройките горе, после следи реалните сделки
+    <p class="note"><b>Реализирано</b> е печалбата от затворени двойки покупка-продажба — тя е прибрана и не се мени с цената.
+      <b>На хартия</b> е разликата между стойността на държания актив и платеното за него; мени се с всеки тик.
+      Сборът им е общият резултат. Когато общото изглежда добре, но реализираното е около нулата, печалбата още не е прибрана.<br>
+      Стартира празна мрежа по текущата цена и настройките горе, после следи реалните сделки
       на Binance. За разлика от теста по свещи тук няма допускане за пътя — всяка сделка е точна.
       Затова пък резултатите идват бавно: при спокоен пазар може да мине час без нито едно изпълнение.</p>
   </section>
@@ -870,7 +873,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
 </div>
 
 <footer>
-  <span style="font-family:var(--mono);color:var(--ink)">версия 40</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
+  <span style="font-family:var(--mono);color:var(--ink)">версия 41</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
   Фъндингът и откритият интерес идват от публичните API-та на Binance, Bybit, OKX и Hyperliquid.
   Ако някоя борса покаже грешка, най-честата причина е блокиране по регион или ограничение на заявките — изчакай минута и обнови.
 </footer>
@@ -4726,12 +4729,16 @@ function gridMove(st, a, b, t){
     for(let i=st.lv.length-1;i>=0;i--){
       const L = st.lv[i];
       if(L.side!=='buy' || L.px>a || L.px<b) continue;
-      const u = gridBuy(st, L.px, L.budget);
+      const spent = L.budget;
+      const u = gridBuy(st, L.px, spent);
       if(u<=0) continue;
+      // бюджетът е изхарчен и трябва да се занули, иначе следващата продажба
+      // го допълва и нивото купува двойно
+      L.budget = 0;
       L.fills++; L.side='idle'; L.lastFill=t; L.lastKind='buy'; fired++;
       st.trades.push({ t, k:'buy', px:L.px, u, i });
       const up = st.lv[i+1];
-      if(up){ up.units += u; up.cost += L.budget; up.side='sell'; up.armed=t; }
+      if(up){ up.units += u; up.cost += spent; up.side='sell'; up.armed=t; }
     }
   } else {
     for(let i=0;i<st.lv.length;i++){
@@ -5096,6 +5103,8 @@ function renderGl(){
      <div><b>${R.nTrades}</b><span>сделки</span></div>
      <div><b class="${vs>=0?'pos':'neg'}">${vs>=0?'+':'−'}${usd(Math.abs(vs))}</b><span>срещу държане</span></div>
      <div><b>${mins<60?fmt(mins,0)+' мин':fmt(mins/60,1)+' ч'}</b><span>от старта${inRange?'':' · извън мрежата'}</span></div>
+     <div><b>${usd(R.cash)}</b><span>долари в сметката</span></div>
+     <div><b>${fmt(R.qty, R.qty<1?5:3)}</b><span>${S.sym} ≈ ${usd(R.qty*glLast)}</span></div>
      ${R.init?`<div><b>${usd(R.init.dollars)}</b><span>начална покупка на ${fmt(R.init.px, R.init.px<10?4:2)}</span></div>`:''}`;
 
   drawGlChart();
@@ -5228,28 +5237,48 @@ function drawGlChart(){
   g.font = '500 20px '+css.getPropertyValue('--mono'); g.fillStyle = ink;
   g.fillText(fmt(last.px, last.px<10?4:2), W-pad.r+10, ly+7);
 
-  // текущ резултат и такси, за да се четат без да се вдига поглед
+  // Таблото е двуколонно: вляво какво е спечелено, вдясно какво има в сметката.
+  // Шест реда в една колона щяха да закрият половината графика.
   const R = gridStats(glSt, glLast);
-  const lines = [
-    ['резултат', (R.total>=0?'+':'−')+usd(Math.abs(R.total))+'  '+pct(R.total/R.cap*100), R.total>=0?A:T],
-    ['реализирано', (R.realized>=0?'+':'−')+usd(Math.abs(R.realized)), dim],
-    ['такси', '−'+usd(R.fees), css.getPropertyValue('--hot').trim()],
+  const hotc = css.getPropertyValue('--hot').trim();
+  const sgn = v => (v>=0?'+':'−')+usd(Math.abs(v));
+  const colA = [
+    ['резултат',      sgn(R.total)+'  '+pct(R.total/R.cap*100), R.total>=0?A:T],
+    ['реализирано',   sgn(R.realized), R.realized>=0?A:T],
+    ['на хартия',     sgn(R.float),    R.float>=0?A:T],
   ];
-  g.font = '500 21px '+css.getPropertyValue('--mono');
-  const bw2 = Math.max(...lines.map(l=>g.measureText(l[0]+'  '+l[1]).width)) + 20;
-  g.fillStyle = ground+'E6';
-  g.fillRect(pad.l+4, pad.t+4, bw2, lines.length*24+12);
+  const colB = [
+    ['такси',   '−'+usd(R.fees), hotc],
+    ['долари',  usd(R.cash),     dim],
+    [S.sym,     fmt(R.qty, R.qty<1?5:3)+'  ≈'+usd(R.qty*glLast), dim],
+  ];
+
+  g.font = '400 18px '+css.getPropertyValue('--mono');
+  const wOf = col => Math.max(...col.map(r=>g.measureText(r[0]).width))
+                   + Math.max(...col.map(r=>{ g.font='500 20px '+css.getPropertyValue('--mono');
+                       const w=g.measureText(r[1]).width; g.font='400 18px '+css.getPropertyValue('--mono'); return w; }))
+                   + 22;
+  const wA = wOf(colA), wB = wOf(colB);
+  const boxW = wA + wB + 18, boxH = 3*23 + 14;
+  const bx0 = pad.l+4, by0 = pad.t+4;
+
+  g.fillStyle = ground+'D9';
+  g.fillRect(bx0, by0, boxW, boxH);
   g.strokeStyle = rule; g.lineWidth=1;
-  g.strokeRect(pad.l+4, pad.t+4, bw2, lines.length*24+12);
-  lines.forEach((l,i)=>{
-    const yy = pad.t+26+i*24;
+  g.strokeRect(bx0, by0, boxW, boxH);
+  g.beginPath(); g.moveTo(bx0+wA+9, by0+6); g.lineTo(bx0+wA+9, by0+boxH-6); g.stroke();
+
+  const drawCol = (col, x0, w) => col.forEach((r,i)=>{
+    const yy = by0 + 22 + i*23;
     g.font = '400 18px '+css.getPropertyValue('--mono');
-    g.fillStyle = dim; g.fillText(l[0], pad.l+14, yy);
-    g.font = '500 21px '+css.getPropertyValue('--mono');
-    g.fillStyle = l[2];
-    const w3 = g.measureText(l[1]).width;
-    g.fillText(l[1], pad.l+4+bw2-10-w3, yy);
+    g.fillStyle = dim; g.fillText(r[0], x0+10, yy);
+    g.font = '500 20px '+css.getPropertyValue('--mono');
+    g.fillStyle = r[2];
+    const vw = g.measureText(r[1]).width;
+    g.fillText(r[1], x0+w-10-vw, yy);
   });
+  drawCol(colA, bx0, wA);
+  drawCol(colB, bx0+wA+18, wB);
 
   // времева ос
   g.font = '400 19px '+css.getPropertyValue('--mono'); g.fillStyle = dim;
