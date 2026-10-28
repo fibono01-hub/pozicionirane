@@ -850,6 +850,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
       <span><i style="background:var(--long);height:9px"></i>чака покупка</span>
       <span><i style="background:var(--short);height:9px"></i>чака продажба</span>
       <span><i style="background:var(--rule);height:9px"></i>празно ниво</span>
+      <span><i style="background:var(--ink)"></i>начална покупка</span>
     </div>
     <div id="gl-list"></div>
     <p class="note">Стартира празна мрежа по текущата цена и настройките горе, после следи реалните сделки
@@ -869,7 +870,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
 </div>
 
 <footer>
-  <span style="font-family:var(--mono);color:var(--ink)">версия 39</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
+  <span style="font-family:var(--mono);color:var(--ink)">версия 40</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
   Фъндингът и откритият интерес идват от публичните API-та на Binance, Bybit, OKX и Hyperliquid.
   Ако някоя борса покаже грешка, най-честата причина е блокиране по регион или ограничение на заявките — изчакай минута и обнови.
 </footer>
@@ -4686,6 +4687,9 @@ function gridInit(entry, cfg){
 
   const half = cap/2;
   const startUnits = nAbove>0 ? gridBuy(st, entry, half) : 0;
+  // Началната покупка не е мрежова сделка, затова се пази отделно и не влиза
+  // в броя им — но таксата ѝ вече е в st.fees.
+  st.init = startUnits>0 ? { px:entry, u:startUnits, dollars:half, fee:half*feeRate } : null;
   st.bhUnits = (cap - cap*feeRate)/entry;
 
   st.lv = P.map((px,i)=>({
@@ -4750,7 +4754,7 @@ function gridMove(st, a, b, t){
 function gridStats(st, last){
   const value = st.cash + st.qty*last;
   const bhVal = st.bhUnits*last;
-  return { lv:st.lv, trades:st.trades, entry:st.entry, last,
+  return { lv:st.lv, trades:st.trades, init:st.init, entry:st.entry, last,
            cash:st.cash, qty:st.qty, fees:st.fees,
            realized:st.realized, float: st.qty*last - st.heldCost,
            total: value - st.cap, bhPnl: bhVal - st.cap,
@@ -5091,7 +5095,8 @@ function renderGl(){
      <div><b class="neg">−${usd(R.fees)}</b><span>такси</span></div>
      <div><b>${R.nTrades}</b><span>сделки</span></div>
      <div><b class="${vs>=0?'pos':'neg'}">${vs>=0?'+':'−'}${usd(Math.abs(vs))}</b><span>срещу държане</span></div>
-     <div><b>${mins<60?fmt(mins,0)+' мин':fmt(mins/60,1)+' ч'}</b><span>от старта${inRange?'':' · извън мрежата'}</span></div>`;
+     <div><b>${mins<60?fmt(mins,0)+' мин':fmt(mins/60,1)+' ч'}</b><span>от старта${inRange?'':' · извън мрежата'}</span></div>
+     ${R.init?`<div><b>${usd(R.init.dollars)}</b><span>начална покупка на ${fmt(R.init.px, R.init.px<10?4:2)}</span></div>`:''}`;
 
   drawGlChart();
 
@@ -5105,8 +5110,19 @@ function renderGl(){
           return `<tr><td>${hh}</td>
             <td style="font-family:var(--sans);color:${t.k==='buy'?'var(--long)':'var(--short)'}">${t.k==='buy'?'покупка':'продажба'}</td>
             <td>${fmt(t.px, t.px<10?4:2)}</td><td>${fmt(t.u, t.u<1?6:3)}</td></tr>`;
-        }).join('') + '</tbody></table>'
-    : '<div class="empty">Още никое ниво не се е задействало.</div>';
+        }).join('')
+      + (glSt.init ? `<tr style="opacity:.75"><td>старт</td>
+          <td style="font-family:var(--sans);color:var(--long)">начална покупка</td>
+          <td>${fmt(glSt.init.px, glSt.init.px<10?4:2)}</td>
+          <td>${fmt(glSt.init.u, glSt.init.u<1?6:3)}</td></tr>` : '')
+      + '</tbody></table>'
+    : (glSt.init
+        ? `<table><thead><tr><th>Час</th><th>Вид</th><th>Цена</th><th>Количество</th></tr></thead><tbody>
+           <tr style="opacity:.75"><td>старт</td>
+           <td style="font-family:var(--sans);color:var(--long)">начална покупка</td>
+           <td>${fmt(glSt.init.px, glSt.init.px<10?4:2)}</td>
+           <td>${fmt(glSt.init.u, glSt.init.u<1?6:3)}</td></tr></tbody></table>`
+        : '<div class="empty">Още никое ниво не се е задействало.</div>');
 }
 
 
@@ -5171,6 +5187,23 @@ function drawGlChart(){
     }
   });
 
+  // началната покупка: половината капитал влиза веднага, за да има какво да се продава нагоре
+  if(glSt.init && glSt.init.px>=lo && glSt.init.px<=hi){
+    const ey = y(glSt.init.px);
+    g.strokeStyle = ink; g.lineWidth=1.4; g.setLineDash([2,4]);
+    g.beginPath(); g.moveTo(pad.l,ey); g.lineTo(W-pad.r,ey); g.stroke(); g.setLineDash([]);
+    const ex = Math.max(pad.l+6, x(glStart));
+    g.beginPath(); g.arc(ex, ey, 7, 0, Math.PI*2);
+    g.fillStyle = A; g.fill();
+    g.strokeStyle = ink; g.lineWidth=2; g.stroke();
+    g.font = '500 19px '+css.getPropertyValue('--mono');
+    const tag = 'старт · '+usd(glSt.init.dollars)+' → '+fmt(glSt.init.u, glSt.init.u<1?5:3);
+    const tw = g.measureText(tag).width;
+    const tagX = Math.min(W-pad.r-tw-6, ex+12);
+    g.fillStyle = ground; g.fillRect(tagX-4, ey-26, tw+8, 19);
+    g.fillStyle = ink; g.fillText(tag, tagX, ey-12);
+  }
+
   // цената
   g.beginPath();
   glTicks.forEach((q,i)=> i?g.lineTo(x(q.t),y(q.px)):g.moveTo(x(q.t),y(q.px)));
@@ -5194,6 +5227,29 @@ function drawGlChart(){
   g.strokeStyle = ink; g.lineWidth=1.5; g.strokeRect(W-pad.r+5, ly-13, pad.r-9, 26);
   g.font = '500 20px '+css.getPropertyValue('--mono'); g.fillStyle = ink;
   g.fillText(fmt(last.px, last.px<10?4:2), W-pad.r+10, ly+7);
+
+  // текущ резултат и такси, за да се четат без да се вдига поглед
+  const R = gridStats(glSt, glLast);
+  const lines = [
+    ['резултат', (R.total>=0?'+':'−')+usd(Math.abs(R.total))+'  '+pct(R.total/R.cap*100), R.total>=0?A:T],
+    ['реализирано', (R.realized>=0?'+':'−')+usd(Math.abs(R.realized)), dim],
+    ['такси', '−'+usd(R.fees), css.getPropertyValue('--hot').trim()],
+  ];
+  g.font = '500 21px '+css.getPropertyValue('--mono');
+  const bw2 = Math.max(...lines.map(l=>g.measureText(l[0]+'  '+l[1]).width)) + 20;
+  g.fillStyle = ground+'E6';
+  g.fillRect(pad.l+4, pad.t+4, bw2, lines.length*24+12);
+  g.strokeStyle = rule; g.lineWidth=1;
+  g.strokeRect(pad.l+4, pad.t+4, bw2, lines.length*24+12);
+  lines.forEach((l,i)=>{
+    const yy = pad.t+26+i*24;
+    g.font = '400 18px '+css.getPropertyValue('--mono');
+    g.fillStyle = dim; g.fillText(l[0], pad.l+14, yy);
+    g.font = '500 21px '+css.getPropertyValue('--mono');
+    g.fillStyle = l[2];
+    const w3 = g.measureText(l[1]).width;
+    g.fillText(l[1], pad.l+4+bw2-10-w3, yy);
+  });
 
   // времева ос
   g.font = '400 19px '+css.getPropertyValue('--mono'); g.fillStyle = dim;
