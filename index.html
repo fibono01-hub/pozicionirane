@@ -158,6 +158,7 @@ canvas{width:100%;height:290px;display:block;
 #greq{height:170px;touch-action:pan-y}
 #gropt{height:200px;touch-action:pan-y}
 #grchart{touch-action:pan-y;user-select:none;-webkit-user-select:none}
+#glchart{height:350px;touch-action:pan-y;user-select:none;-webkit-user-select:none}
 #gr-optread{margin-top:12px;font-size:13px;color:var(--ink-dim);line-height:1.65;max-width:60ch}
 #gr-optread b{color:var(--ink);font-weight:500}
 #gr-optread p{margin-bottom:9px}
@@ -844,6 +845,12 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
       <span id="gl-dot" class="dot"></span><span id="gl-lbl" class="dotlbl">спряно</span>
     </div>
     <div id="gl-stats" class="stats"></div>
+    <canvas id="glchart" width="1400" height="620"></canvas>
+    <div class="legend">
+      <span><i style="background:var(--long);height:9px"></i>чака покупка</span>
+      <span><i style="background:var(--short);height:9px"></i>чака продажба</span>
+      <span><i style="background:var(--rule);height:9px"></i>празно ниво</span>
+    </div>
     <div id="gl-list"></div>
     <p class="note">Стартира празна мрежа по текущата цена и настройките горе, после следи реалните сделки
       на Binance. За разлика от теста по свещи тук няма допускане за пътя — всяка сделка е точна.
@@ -862,7 +869,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
 </div>
 
 <footer>
-  <span style="font-family:var(--mono);color:var(--ink)">версия 38</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
+  <span style="font-family:var(--mono);color:var(--ink)">версия 39</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
   Фъндингът и откритият интерес идват от публичните API-та на Binance, Bybit, OKX и Hyperliquid.
   Ако някоя борса покаже грешка, най-честата причина е блокиране по регион или ограничение на заявките — изчакай минута и обнови.
 </footer>
@@ -4717,10 +4724,10 @@ function gridMove(st, a, b, t){
       if(L.side!=='buy' || L.px>a || L.px<b) continue;
       const u = gridBuy(st, L.px, L.budget);
       if(u<=0) continue;
-      L.fills++; L.side='idle'; fired++;
+      L.fills++; L.side='idle'; L.lastFill=t; L.lastKind='buy'; fired++;
       st.trades.push({ t, k:'buy', px:L.px, u, i });
       const up = st.lv[i+1];
-      if(up){ up.units += u; up.cost += L.budget; up.side='sell'; }
+      if(up){ up.units += u; up.cost += L.budget; up.side='sell'; up.armed=t; }
     }
   } else {
     for(let i=0;i<st.lv.length;i++){
@@ -4730,10 +4737,10 @@ function gridMove(st, a, b, t){
       const u = L.units, cost = L.cost;
       const net = gridSell(st, L.px, u, cost);
       if(net<=0) continue;
-      L.fills++; L.units=0; L.cost=0; L.side='idle'; fired++;
+      L.fills++; L.units=0; L.cost=0; L.side='idle'; L.lastFill=t; L.lastKind='sell'; fired++;
       st.trades.push({ t, k:'sell', px:L.px, u, i });
       const dn = st.lv[i-1];
-      if(dn){ dn.budget += net; dn.side='buy'; }
+      if(dn){ dn.budget += net; dn.side='buy'; dn.armed=t; }
     }
   }
   st.prev = b;
@@ -5000,6 +5007,7 @@ document.getElementById('gr-help').innerHTML = `
 /* ---------------- мрежа на живо ---------------- */
 let glWs = null, glOn = false, glSt = null, glRetry = 0, glTimer = null;
 let glStart = 0, glLast = 0, glTick = null;
+let glTicks = [];   // {t, px} — последните няколко минути, за живата графика
 
 function glStatus(st, label){
   const d = document.getElementById('gl-dot'), l = document.getElementById('gl-lbl');
@@ -5030,6 +5038,11 @@ function glConnect(){
     const px = parseFloat(m.p);
     if(!isFinite(px) || px<=0) return;
     glLast = px;
+    const tt = m.T || Date.now();
+    glTicks.push({ t:tt, px });
+    // държим последните 15 минути и не повече от 3000 точки
+    const cut = tt - 15*60000;
+    while(glTicks.length && (glTicks[0].t < cut || glTicks.length > 3000)) glTicks.shift();
     if(!glSt){
       // първата цена задава мрежата
       glSt = gridInit(px, {
@@ -5057,7 +5070,7 @@ function glConnect(){
   };
 
   // прерисуването е на интервал, а не на всяка сделка — иначе при оживен пазар мига
-  glTick = setInterval(renderGl, 1000);
+  glTick = setInterval(renderGl, 400);
 }
 
 function renderGl(){
@@ -5065,7 +5078,7 @@ function renderGl(){
   if(!st) return;
   if(!glSt || !glLast){
     st.innerHTML = `<span style="color:var(--ink-dim);font-size:13px">${glOn?'Чака първата сделка…':'Спряно.'}</span>`;
-    ls.innerHTML = ''; return;
+    ls.innerHTML = ''; drawGlChart(); return;
   }
   const R = gridStats(glSt, glLast);
   const vs = R.total - R.bhPnl;
@@ -5079,6 +5092,8 @@ function renderGl(){
      <div><b>${R.nTrades}</b><span>сделки</span></div>
      <div><b class="${vs>=0?'pos':'neg'}">${vs>=0?'+':'−'}${usd(Math.abs(vs))}</b><span>срещу държане</span></div>
      <div><b>${mins<60?fmt(mins,0)+' мин':fmt(mins/60,1)+' ч'}</b><span>от старта${inRange?'':' · извън мрежата'}</span></div>`;
+
+  drawGlChart();
 
   const tr = glSt.trades.slice(-20).reverse();
   ls.innerHTML = tr.length
@@ -5094,12 +5109,107 @@ function renderGl(){
     : '<div class="empty">Още никое ниво не се е задействало.</div>';
 }
 
+
+function drawGlChart(){
+  const cv = document.getElementById('glchart'); if(!cv) return;
+  const g = cv.getContext('2d');
+  const W=cv.width, H=cv.height, pad={l:8,r:92,t:14,b:26};
+  g.clearRect(0,0,W,H);
+
+  const css = getComputedStyle(document.documentElement);
+  const dim=css.getPropertyValue('--ink-dim').trim(), rule=css.getPropertyValue('--rule').trim();
+  const ink=css.getPropertyValue('--ink').trim();
+  const A=css.getPropertyValue('--long').trim(), T=css.getPropertyValue('--short').trim();
+  const ground=css.getPropertyValue('--ground').trim();
+
+  if(!glSt || glTicks.length<2){
+    g.font='400 22px '+css.getPropertyValue('--mono'); g.fillStyle=rule;
+    const t = glOn ? 'чака сделки…' : 'спряно';
+    g.fillText(t, pad.l+8, H/2);
+    return;
+  }
+
+  const now = Date.now();
+  const t0 = glTicks[0].t, t1 = Math.max(glTicks[glTicks.length-1].t, now);
+  const PW=W-pad.l-pad.r, PH=H-pad.t-pad.b;
+  const x = t => pad.l + (t-t0)/((t1-t0)||1)*PW;
+
+  // показваме цената плюс няколко нива встрани, иначе при широка мрежа
+  // движението се смачква в тънка линия по средата
+  const pxs = glTicks.map(q=>q.px);
+  let lo = Math.min(...pxs), hi = Math.max(...pxs);
+  const st = glSt.step;
+  lo -= st*2.2; hi += st*2.2;
+  if(hi-lo < st*5){ const c=(hi+lo)/2; lo=c-st*2.5; hi=c+st*2.5; }
+  const y = v => pad.t + (hi-v)/((hi-lo)||1)*PH;
+
+  // нивата
+  g.font = '400 19px '+css.getPropertyValue('--mono');
+  glSt.lv.forEach(L=>{
+    if(L.px<lo || L.px>hi) return;
+    const yy = y(L.px);
+    const col = L.side==='buy' ? A : L.side==='sell' ? T : rule;
+    // прясно задействаните и прясно поставените светват за кратко
+    const fresh = Math.max(L.lastFill||0, L.armed||0);
+    const age = fresh ? now-fresh : Infinity;
+    const hot = age < 2500;
+    g.strokeStyle = col; g.lineWidth = hot ? 3 : (L.side==='idle' ? 1 : 1.8);
+    g.globalAlpha = hot ? 1 : (L.side==='idle' ? 0.45 : 0.85);
+    g.setLineDash(L.side==='idle' ? [4,5] : []);
+    g.beginPath(); g.moveTo(pad.l,yy); g.lineTo(W-pad.r,yy); g.stroke();
+    g.setLineDash([]); g.globalAlpha = 1;
+
+    const lab = fmt(L.px, L.px<10?4:2);
+    g.fillStyle = hot ? col : dim;
+    g.fillText(lab, W-pad.r+9, yy+7);
+    if(hot){
+      const tag = L.lastFill && age===now-L.lastFill
+        ? (L.lastKind==='buy' ? 'купено' : 'продадено') : 'нов ордер';
+      const tw = g.measureText(tag).width;
+      g.fillStyle = ground; g.fillRect(pad.l+4, yy-14, tw+8, 18);
+      g.fillStyle = col; g.fillText(tag, pad.l+8, yy);
+    }
+  });
+
+  // цената
+  g.beginPath();
+  glTicks.forEach((q,i)=> i?g.lineTo(x(q.t),y(q.px)):g.moveTo(x(q.t),y(q.px)));
+  g.strokeStyle = ink; g.lineWidth=2; g.stroke();
+
+  // изпълненията в прозореца
+  glSt.trades.forEach(tr=>{
+    if(tr.t<t0 || tr.px<lo || tr.px>hi) return;
+    const age = now-tr.t;
+    const r = age<2500 ? 6 : 3.4;
+    g.beginPath(); g.arc(x(tr.t), y(tr.px), r, 0, Math.PI*2);
+    g.fillStyle = tr.k==='buy'?A:T; g.fill();
+    if(age<2500){ g.strokeStyle=ink; g.lineWidth=1.5; g.stroke(); }
+  });
+
+  // текуща цена
+  const last = glTicks[glTicks.length-1];
+  const ly = y(last.px);
+  g.beginPath(); g.arc(x(last.t), ly, 5, 0, Math.PI*2); g.fillStyle=ink; g.fill();
+  g.fillStyle = ground; g.fillRect(W-pad.r+5, ly-13, pad.r-9, 26);
+  g.strokeStyle = ink; g.lineWidth=1.5; g.strokeRect(W-pad.r+5, ly-13, pad.r-9, 26);
+  g.font = '500 20px '+css.getPropertyValue('--mono'); g.fillStyle = ink;
+  g.fillText(fmt(last.px, last.px<10?4:2), W-pad.r+10, ly+7);
+
+  // времева ос
+  g.font = '400 19px '+css.getPropertyValue('--mono'); g.fillStyle = dim;
+  const hhmm = ms => { const d=new Date(ms);
+    return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')+':'+String(d.getSeconds()).padStart(2,'0'); };
+  g.fillText(hhmm(t0), pad.l, H-6);
+  const tx = hhmm(t1);
+  g.fillText(tx, W-pad.r-g.measureText(tx).width, H-6);
+}
+
 document.getElementById('gl-ctl').addEventListener('click', e=>{
   if(e.target.id!=='gl-on') return;
   glOn = !glOn;
   e.target.setAttribute('aria-pressed', glOn);
   e.target.textContent = glOn ? 'Спри' : 'Пусни на живо';
-  if(glOn){ glSt=null; glLast=0; glRetry=0; glConnect(); }
+  if(glOn){ glSt=null; glLast=0; glTicks=[]; glRetry=0; glConnect(); }
   else { glClose(); glStatus(0,'спряно'); }
   renderGl();
 });
