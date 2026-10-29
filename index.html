@@ -158,6 +158,11 @@ canvas{width:100%;height:290px;display:block;
 #greq{height:170px;touch-action:pan-y}
 #gropt{height:200px;touch-action:pan-y}
 #grchart{touch-action:pan-y;user-select:none;-webkit-user-select:none}
+.pnlrow{display:flex;gap:10px;flex-wrap:wrap;margin:4px 0 16px}
+.pnlrow div{flex:1 1 150px;border:1px solid var(--rule);border-radius:2px;padding:11px 13px}
+.pnlrow b{display:block;font-family:var(--mono);font-size:21px;font-weight:500;letter-spacing:-.01em}
+.pnlrow span{display:block;font-size:11px;color:var(--ink-dim);margin-top:4px}
+.pnlrow .sub{font-family:var(--mono);font-size:11px;color:var(--ink-dim);margin-top:2px}
 #glchart{height:350px;touch-action:pan-y;user-select:none;-webkit-user-select:none}
 #gr-optread{margin-top:12px;font-size:13px;color:var(--ink-dim);line-height:1.65;max-width:60ch}
 #gr-optread b{color:var(--ink);font-weight:500}
@@ -804,6 +809,12 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
     <label>Капитал USD<input id="gr-cap" type="text" inputmode="decimal" value="10000"></label>
     <label>Такса %<input id="gr-fee" type="text" inputmode="decimal" value="0.05"></label>
   </div>
+  <div class="controls" id="gr-mode">
+    <button data-gm="value" aria-pressed="true">Еднакъв бюджет</button>
+    <button data-gm="qty">Еднакво количество</button>
+  </div>
+  <div id="gr-modenote" class="note"></div>
+
   <div class="controls" id="gr-acts">
     <button id="gr-auto">Авто граници</button>
     <button id="gr-run">Пусни</button>
@@ -844,6 +855,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
       <button id="gl-on" aria-pressed="false">Пусни на живо</button>
       <span id="gl-dot" class="dot"></span><span id="gl-lbl" class="dotlbl">спряно</span>
     </div>
+    <div id="gl-pnl" class="pnlrow"></div>
     <div id="gl-stats" class="stats"></div>
     <canvas id="glchart" width="1400" height="620"></canvas>
     <div class="legend">
@@ -873,7 +885,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
 </div>
 
 <footer>
-  <span style="font-family:var(--mono);color:var(--ink)">версия 41</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
+  <span style="font-family:var(--mono);color:var(--ink)">версия 42</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
   Фъндингът и откритият интерес идват от публичните API-та на Binance, Bybit, OKX и Hyperliquid.
   Ако някоя борса покаже грешка, най-честата причина е блокиране по регион или ограничение на заявките — изчакай минута и обнови.
 </footer>
@@ -4661,7 +4673,7 @@ document.getElementById('lf-ctl').addEventListener('click', e=>{
 renderLf();
 
 /* ---------------- симулация на мрежа ---------------- */
-S.grInt='1h'; S.grLen=500;
+S.grInt='1h'; S.grLen=500; S.grMode='value';
 let grData = null, grRes = null;
 let grView = null;   // {i0,i1} — общ за цената и за стойността
 
@@ -4676,7 +4688,7 @@ const grNum = id => {
 // Състоянието на мрежата е отделено от обхождането, за да върви и по свещи,
 // и по жив тик — логиката на изпълнение е една и съща и на двете места.
 function gridInit(entry, cfg){
-  const { lo, hi, n, cap, feeRate } = cfg;
+  const { lo, hi, n, cap, feeRate, mode } = cfg;
   if(!(hi>lo) || n<2 || cap<=0 || !(entry>0)) return null;
 
   const step = (hi-lo)/(n-1);
@@ -4686,21 +4698,38 @@ function gridInit(entry, cfg){
   const nBelow = si, nAbove = n-1-si;
 
   const st = { cash:cap, qty:0, fees:0, realized:0, heldCost:0,
-               trades:[], entry, cap, feeRate, step, lo, hi, n, si, prev:entry };
+               trades:[], entry, cap, feeRate, step, lo, hi, n, si,
+               prev:entry, mode: mode==='qty' ? 'qty' : 'value' };
 
-  const half = cap/2;
-  const startUnits = nAbove>0 ? gridBuy(st, entry, half) : 0;
+  // Две схеми на разпределение:
+  //  value — еднакъв бюджет в долари на ниво, значи повече единици ниско
+  //  qty   — еднакво количество на поръчка, значи повече долари високо
+  let startUnits = 0, budgets;
+  if(st.mode==='qty'){
+    let sumBelow = 0;
+    for(let i=0;i<si;i++) sumBelow += P[i];
+    const denom = nAbove*entry + sumBelow;
+    st.qtyPer = denom>0 ? cap/denom : 0;
+    budgets = i => st.qtyPer*P[i];
+    if(nAbove>0) startUnits = gridBuy(st, entry, st.qtyPer*nAbove*entry);
+  } else {
+    const half = cap/2;
+    budgets = () => nBelow>0 ? half/nBelow : 0;
+    if(nAbove>0) startUnits = gridBuy(st, entry, half);
+  }
+
   // Началната покупка не е мрежова сделка, затова се пази отделно и не влиза
   // в броя им — но таксата ѝ вече е в st.fees.
-  st.init = startUnits>0 ? { px:entry, u:startUnits, dollars:half, fee:half*feeRate } : null;
+  st.init = startUnits>0
+    ? { px:entry, u:startUnits, dollars:cap-st.cash, fee:(cap-st.cash)*feeRate } : null;
   st.bhUnits = (cap - cap*feeRate)/entry;
 
   st.lv = P.map((px,i)=>({
     px, i,
     side: i<si ? 'buy' : i>si ? 'sell' : 'idle',
-    budget: i<si && nBelow>0 ? half/nBelow : 0,
+    budget: i<si ? budgets(i) : 0,
     units:  i>si && nAbove>0 ? startUnits/nAbove : 0,
-    cost:   i>si && nAbove>0 ? half/nAbove : 0,
+    cost:   i>si && nAbove>0 ? (cap-st.cash)/nAbove : 0,
     fills: 0
   }));
   return st;
@@ -4751,7 +4780,10 @@ function gridMove(st, a, b, t){
       L.fills++; L.units=0; L.cost=0; L.side='idle'; L.lastFill=t; L.lastKind='sell'; fired++;
       st.trades.push({ t, k:'sell', px:L.px, u, i });
       const dn = st.lv[i-1];
-      if(dn){ dn.budget += net; dn.side='buy'; dn.armed=t; }
+      if(dn){
+        dn.budget = st.mode==='qty' ? st.qtyPer*dn.px : dn.budget + net;
+        dn.side='buy'; dn.armed=t;
+      }
     }
   }
   st.prev = b;
@@ -4808,7 +4840,8 @@ function runGrid(){
     lo: grNum('gr-lo'), hi: grNum('gr-hi'),
     n: Math.max(2, Math.min(200, Math.round(grNum('gr-n')||20))),
     cap: grNum('gr-cap')||10000,
-    feeRate: (grNum('gr-fee') ?? 0.05)/100
+    feeRate: (grNum('gr-fee') ?? 0.05)/100,
+    mode: S.grMode
   });
   drawGrid();
 }
@@ -4829,9 +4862,9 @@ function drawGrid(){
 
   const vs = R.total - R.bhPnl;
   out.innerHTML =
-    `<div><b class="${R.total>=0?'pos':'neg'}">${R.total>=0?'+':'−'}${usd(Math.abs(R.total))}</b><span>общо · ${pct(R.total/R.cap*100)}</span></div>
-     <div><b class="${R.realized>=0?'pos':'neg'}">${R.realized>=0?'+':'−'}${usd(Math.abs(R.realized))}</b><span>реализирано</span></div>
-     <div><b class="${R.float>=0?'pos':'neg'}">${R.float>=0?'+':'−'}${usd(Math.abs(R.float))}</b><span>нереализирано</span></div>
+    `<div><b class="${R.total>=0?'pos':'neg'}">${R.total>=0?'+':'−'}${usd(Math.abs(R.total))}</b><span>Total PnL · ${pct(R.total/R.cap*100)}</span></div>
+     <div><b class="${R.realized>=0?'pos':'neg'}">${R.realized>=0?'+':'−'}${usd(Math.abs(R.realized))}</b><span>Grid PnL</span></div>
+     <div><b class="${R.float>=0?'pos':'neg'}">${R.float>=0?'+':'−'}${usd(Math.abs(R.float))}</b><span>Float PnL</span></div>
      <div><b class="neg">−${usd(R.fees)}</b><span>такси</span></div>
      <div><b>${R.nTrades}</b><span>сделки</span></div>
      <div><b class="${R.bhPnl>=0?'pos':'neg'}">${R.bhPnl>=0?'+':'−'}${usd(Math.abs(R.bhPnl))}</b><span>купи и дръж</span></div>
@@ -4923,6 +4956,22 @@ document.getElementById('gr-len').addEventListener('click', e=>{
   document.getElementById('gr-lo').value=''; document.getElementById('gr-hi').value='';
   loadGrid().catch(()=>{});
 });
+function grModeNote(){
+  const el = document.getElementById('gr-modenote');
+  if(el) el.innerHTML = S.grMode==='qty'
+    ? '<b>Еднакво количество</b> на поръчка, както при Binance: нагоре всяка поръчка струва повече долари, а печалбата на обиколка е еднаква навсякъде.'
+    : '<b>Еднакъв бюджет</b> в долари на ниво: ниско се купуват повече единици, затова печалбата на обиколка е по-голяма в долната част на мрежата.';
+}
+grModeNote();
+
+document.getElementById('gr-mode').addEventListener('click', e=>{
+  const b = e.target.closest('button[data-gm]'); if(!b) return;
+  S.grMode = b.dataset.gm;
+  document.querySelectorAll('#gr-mode button').forEach(x=>x.setAttribute('aria-pressed', x===b));
+  grModeNote(); runGrid();
+  if(glOn){ glSt=null; glLast=0; glTicks=[]; renderGl(); }
+});
+
 document.getElementById('gr-acts').addEventListener('click', e=>{
   if(e.target.id==='gr-auto'){ grAuto(); runGrid(); }
   if(e.target.id==='gr-run') runGrid();
@@ -5060,7 +5109,8 @@ function glConnect(){
         lo: grNum('gr-lo'), hi: grNum('gr-hi'),
         n: Math.max(2, Math.min(200, Math.round(grNum('gr-n')||20))),
         cap: grNum('gr-cap')||10000,
-        feeRate: (grNum('gr-fee') ?? 0.05)/100
+        feeRate: (grNum('gr-fee') ?? 0.05)/100,
+        mode: S.grMode
       });
       glStart = Date.now();
       if(!glSt){ glOn=false; glClose(); glStatus(0,'провери настройките'); renderGl(); return; }
@@ -5089,17 +5139,23 @@ function renderGl(){
   if(!st) return;
   if(!glSt || !glLast){
     st.innerHTML = `<span style="color:var(--ink-dim);font-size:13px">${glOn?'Чака първата сделка…':'Спряно.'}</span>`;
-    ls.innerHTML = ''; drawGlChart(); return;
+    ls.innerHTML = ''; document.getElementById('gl-pnl').innerHTML = ''; drawGlChart(); return;
   }
   const R = gridStats(glSt, glLast);
   const vs = R.total - R.bhPnl;
   const mins = (Date.now()-glStart)/60000;
   const inRange = glLast>=R.lo && glLast<=R.hi;
 
+  document.getElementById('gl-pnl').innerHTML =
+    `<div><b class="${R.total>=0?'pos':'neg'}">${R.total>=0?'+':'−'}${usd(Math.abs(R.total))}</b>
+       <div class="sub">${pct(R.total/R.cap*100)}</div><span>Total PnL</span></div>
+     <div><b class="${R.realized>=0?'pos':'neg'}">${R.realized>=0?'+':'−'}${usd(Math.abs(R.realized))}</b>
+       <div class="sub">от затворени двойки</div><span>Grid PnL</span></div>
+     <div><b class="${R.float>=0?'pos':'neg'}">${R.float>=0?'+':'−'}${usd(Math.abs(R.float))}</b>
+       <div class="sub">по текуща цена</div><span>Float PnL</span></div>`;
+
   st.innerHTML =
-    `<div><b class="${R.total>=0?'pos':'neg'}">${R.total>=0?'+':'−'}${usd(Math.abs(R.total))}</b><span>общо · ${pct(R.total/R.cap*100)}</span></div>
-     <div><b class="${R.realized>=0?'pos':'neg'}">${R.realized>=0?'+':'−'}${usd(Math.abs(R.realized))}</b><span>реализирано</span></div>
-     <div><b class="neg">−${usd(R.fees)}</b><span>такси</span></div>
+    `<div><b class="neg">−${usd(R.fees)}</b><span>такси</span></div>
      <div><b>${R.nTrades}</b><span>сделки</span></div>
      <div><b class="${vs>=0?'pos':'neg'}">${vs>=0?'+':'−'}${usd(Math.abs(vs))}</b><span>срещу държане</span></div>
      <div><b>${mins<60?fmt(mins,0)+' мин':fmt(mins/60,1)+' ч'}</b><span>от старта${inRange?'':' · извън мрежата'}</span></div>
@@ -5243,9 +5299,9 @@ function drawGlChart(){
   const hotc = css.getPropertyValue('--hot').trim();
   const sgn = v => (v>=0?'+':'−')+usd(Math.abs(v));
   const colA = [
-    ['резултат',      sgn(R.total)+'  '+pct(R.total/R.cap*100), R.total>=0?A:T],
-    ['реализирано',   sgn(R.realized), R.realized>=0?A:T],
-    ['на хартия',     sgn(R.float),    R.float>=0?A:T],
+    ['Total PnL', sgn(R.total)+'  '+pct(R.total/R.cap*100), R.total>=0?A:T],
+    ['Grid PnL',  sgn(R.realized), R.realized>=0?A:T],
+    ['Float PnL', sgn(R.float),    R.float>=0?A:T],
   ];
   const colB = [
     ['такси',   '−'+usd(R.fees), hotc],
@@ -5320,7 +5376,7 @@ function grSweep(){
   for(let n=3;n<=80;n++) ns.push(n);
 
   const run = (data, n) => {
-    const r = gridSim(data, { lo, hi, n, cap, feeRate });
+    const r = gridSim(data, { lo, hi, n, cap, feeRate, mode:S.grMode });
     return r ? r.total : null;
   };
 
