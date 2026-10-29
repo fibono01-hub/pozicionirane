@@ -809,6 +809,8 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
     <label>Капитал USD<input id="gr-cap" type="text" inputmode="decimal" value="10000"></label>
     <label>Такса %<input id="gr-fee" type="text" inputmode="decimal" value="0.05"></label>
   </div>
+  <div id="gr-stepnote" class="note"></div>
+
   <div class="controls" id="gr-mode">
     <button data-gm="value" aria-pressed="true">Еднакъв бюджет</button>
     <button data-gm="qty">Еднакво количество</button>
@@ -885,7 +887,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
 </div>
 
 <footer>
-  <span style="font-family:var(--mono);color:var(--ink)">версия 42</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
+  <span style="font-family:var(--mono);color:var(--ink)">версия 43</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
   Фъндингът и откритият интерес идват от публичните API-та на Binance, Bybit, OKX и Hyperliquid.
   Ако някоя борса покаже грешка, най-честата причина е блокиране по регион или ограничение на заявките — изчакай минута и обнови.
 </footer>
@@ -904,6 +906,11 @@ const usd = n => {
   return n.toFixed(0);
 };
 const pct = n => (n>0?'+':'')+fmt(n,2)+'%';
+// Пълен запис със знак и мерна единица. usd() съкращава за графики и прегледи,
+// money() се ползва там, където точната стойност има значение.
+const money  = (n, dp=2) => (n==null||!isFinite(n)) ? '—' : fmt(n,dp)+' USD';
+const smoney = (n, dp=2) => (n==null||!isFinite(n)) ? '—'
+  : (n>=0?'+':'−')+fmt(Math.abs(n),dp)+' USD';
 
 async function j(url,opt){
   const r = await fetch(url,opt);
@@ -4834,7 +4841,44 @@ function grAuto(){
   document.getElementById('gr-hi').value = (H-d).toFixed(dp);
 }
 
+// Стъпката, изразена спрямо текущата цена — това е числото, което се сравнява
+// с прага на таксите, не абсолютната разлика между нивата.
+function grStepNote(){
+  const el = document.getElementById('gr-stepnote'); if(!el) return;
+  const lo = grNum('gr-lo'), hi = grNum('gr-hi');
+  const n = Math.max(2, Math.min(200, Math.round(grNum('gr-n')||20)));
+  const feeRate = (grNum('gr-fee') ?? 0.05)/100;
+  const live = (typeof glLast === 'number' && glLast > 0) ? glLast : 0;
+  const px = live || (grData && grData.length ? grData[grData.length-1].c : 0);
+  if(!(hi>lo) || !(px>0)){ el.innerHTML=''; return; }
+
+  const step  = (hi-lo)/(n-1);
+  const relNow = step/px*100;                  // шпация спрямо текущата цена
+  const relMid = step/((lo+hi)/2)*100;         // спрямо средата на мрежата
+  const floor  = grFeeFloor(feeRate)*100;      // прагът, под който обиколката е на загуба
+  const edge   = relNow - floor;
+  const ok     = edge > 0;
+  const inRange = px>=lo && px<=hi;
+
+  // Точно, не линейно: купува се с такса, продава се с такса, затова (1−f)².
+  // Нетото е на 1000 USD на едно ниво — така не се предполага нищо за
+  // разпределението на капитала между нивата.
+  const net1k = ((1-feeRate)*(1-feeRate)*(1+relNow/100) - 1) * 1000;
+  el.innerHTML =
+      `шпация <b>${fmt(step, step<1?4:2)} USD</b> = `
+    + `<b style="color:${ok?'var(--ink)':'var(--hot)'}">${fmt(relNow,3)}%</b> от текущата цена `
+    + `<span class="dim">(${fmt(relMid,3)}% от средата на мрежата)</span>`
+    + `<br>прагът на таксите при ${fmt(feeRate*100,3)}% е <b>${fmt(floor,3)}%</b> → `
+    + (ok
+        ? `нето <b>${fmt(edge,3)}%</b> на обиколка, или <b>${money(net1k,2)}</b> на 1000 USD на нивото`
+        : `<b style="color:var(--hot)">всяка обиколка е на загуба</b> — шпацията е ${fmt(-edge,3)}% под прага`)
+    + `<br>мрежата е широка <b>${fmt((hi/lo-1)*100,2)}%</b>, ${n} нива`
+    + (inRange ? '' : ' · <b style="color:var(--hot)">цената е извън границите</b>')
+    + (live ? ' · цена на живо' : '');
+}
+
 function runGrid(){
+  grStepNote();
   if(!grData) return;
   grRes = gridSim(grData, {
     lo: grNum('gr-lo'), hi: grNum('gr-hi'),
@@ -4862,13 +4906,13 @@ function drawGrid(){
 
   const vs = R.total - R.bhPnl;
   out.innerHTML =
-    `<div><b class="${R.total>=0?'pos':'neg'}">${R.total>=0?'+':'−'}${usd(Math.abs(R.total))}</b><span>Total PnL · ${pct(R.total/R.cap*100)}</span></div>
-     <div><b class="${R.realized>=0?'pos':'neg'}">${R.realized>=0?'+':'−'}${usd(Math.abs(R.realized))}</b><span>Grid PnL</span></div>
-     <div><b class="${R.float>=0?'pos':'neg'}">${R.float>=0?'+':'−'}${usd(Math.abs(R.float))}</b><span>Float PnL</span></div>
-     <div><b class="neg">−${usd(R.fees)}</b><span>такси</span></div>
+    `<div><b class="${R.total>=0?'pos':'neg'}">${smoney(R.total)}</b><span>Total PnL · ${pct(R.total/R.cap*100)}</span></div>
+     <div><b class="${R.realized>=0?'pos':'neg'}">${smoney(R.realized)}</b><span>Grid PnL</span></div>
+     <div><b class="${R.float>=0?'pos':'neg'}">${smoney(R.float)}</b><span>Float PnL</span></div>
+     <div><b class="neg">−${money(R.fees)}</b><span>такси</span></div>
      <div><b>${R.nTrades}</b><span>сделки</span></div>
-     <div><b class="${R.bhPnl>=0?'pos':'neg'}">${R.bhPnl>=0?'+':'−'}${usd(Math.abs(R.bhPnl))}</b><span>купи и дръж</span></div>
-     <div><b class="${vs>=0?'pos':'neg'}">${vs>=0?'+':'−'}${usd(Math.abs(vs))}</b><span>мрежа срещу държане</span></div>`;
+     <div><b class="${R.bhPnl>=0?'pos':'neg'}">${smoney(R.bhPnl)}</b><span>купи и дръж</span></div>
+     <div><b class="${vs>=0?'pos':'neg'}">${smoney(vs)}</b><span>мрежа срещу държане</span></div>`;
 
   // --- цена и нива ---
   const N = grData.length, W=cv.width, H=cv.height, pad={l:8,r:88,t:14,b:26};
@@ -4977,6 +5021,7 @@ document.getElementById('gr-acts').addEventListener('click', e=>{
   if(e.target.id==='gr-run') runGrid();
 });
 document.querySelectorAll('#tab-grid .fgrid input').forEach(el=>el.addEventListener('input', runGrid));
+document.getElementById('gr-n').addEventListener('input', grStepNote);
 
 document.getElementById('gr-help').innerHTML = `
   <p><b>Как работи мрежата.</b> Диапазонът се дели на равни нива. Половината капитал влиза веднага в актив, за да има какво да се продава нагоре; другата половина остава в пари за покупките надолу. Всяка изпълнена покупка поставя продажба едно ниво по-горе, всяка продажба връща пари за покупка едно ниво по-долу. Печалбата идва от люлеенето, не от посоката.</p>
@@ -5116,7 +5161,7 @@ function glConnect(){
       if(!glSt){ glOn=false; glClose(); glStatus(0,'провери настройките'); renderGl(); return; }
     } else {
       const fired = gridMove(glSt, glSt.prev, px, m.T || Date.now());
-      if(fired){ glStatus(2, 'сделка · '+S.sym);
+      if(fired){ grStepNote(); glStatus(2, 'сделка · '+S.sym);
         setTimeout(()=>{ if(glOn && glWs===ws) glStatus(1,'на живо · '+S.sym); }, 400); }
     }
   };
@@ -5147,21 +5192,21 @@ function renderGl(){
   const inRange = glLast>=R.lo && glLast<=R.hi;
 
   document.getElementById('gl-pnl').innerHTML =
-    `<div><b class="${R.total>=0?'pos':'neg'}">${R.total>=0?'+':'−'}${usd(Math.abs(R.total))}</b>
-       <div class="sub">${pct(R.total/R.cap*100)}</div><span>Total PnL</span></div>
-     <div><b class="${R.realized>=0?'pos':'neg'}">${R.realized>=0?'+':'−'}${usd(Math.abs(R.realized))}</b>
+    `<div><b class="${R.total>=0?'pos':'neg'}">${smoney(R.total)}</b>
+       <div class="sub">${pct(R.total/R.cap*100)} от капитала</div><span>Total PnL</span></div>
+     <div><b class="${R.realized>=0?'pos':'neg'}">${smoney(R.realized)}</b>
        <div class="sub">от затворени двойки</div><span>Grid PnL</span></div>
-     <div><b class="${R.float>=0?'pos':'neg'}">${R.float>=0?'+':'−'}${usd(Math.abs(R.float))}</b>
+     <div><b class="${R.float>=0?'pos':'neg'}">${smoney(R.float)}</b>
        <div class="sub">по текуща цена</div><span>Float PnL</span></div>`;
 
   st.innerHTML =
-    `<div><b class="neg">−${usd(R.fees)}</b><span>такси</span></div>
+    `<div><b class="neg">−${money(R.fees)}</b><span>такси</span></div>
      <div><b>${R.nTrades}</b><span>сделки</span></div>
-     <div><b class="${vs>=0?'pos':'neg'}">${vs>=0?'+':'−'}${usd(Math.abs(vs))}</b><span>срещу държане</span></div>
+     <div><b class="${vs>=0?'pos':'neg'}">${smoney(vs)}</b><span>срещу държане</span></div>
      <div><b>${mins<60?fmt(mins,0)+' мин':fmt(mins/60,1)+' ч'}</b><span>от старта${inRange?'':' · извън мрежата'}</span></div>
-     <div><b>${usd(R.cash)}</b><span>долари в сметката</span></div>
-     <div><b>${fmt(R.qty, R.qty<1?5:3)}</b><span>${S.sym} ≈ ${usd(R.qty*glLast)}</span></div>
-     ${R.init?`<div><b>${usd(R.init.dollars)}</b><span>начална покупка на ${fmt(R.init.px, R.init.px<10?4:2)}</span></div>`:''}`;
+     <div><b>${money(R.cash)}</b><span>налични долари</span></div>
+     <div><b>${fmt(R.qty, 6)} ${S.sym}</b><span>≈ ${money(R.qty*glLast)}</span></div>
+     ${R.init?`<div><b>${money(R.init.dollars)}</b><span>начална покупка на ${fmt(R.init.px, R.init.px<10?4:2)} USD</span></div>`:''}`;
 
   drawGlChart();
 
@@ -5297,16 +5342,15 @@ function drawGlChart(){
   // Шест реда в една колона щяха да закрият половината графика.
   const R = gridStats(glSt, glLast);
   const hotc = css.getPropertyValue('--hot').trim();
-  const sgn = v => (v>=0?'+':'−')+usd(Math.abs(v));
   const colA = [
-    ['Total PnL', sgn(R.total)+'  '+pct(R.total/R.cap*100), R.total>=0?A:T],
-    ['Grid PnL',  sgn(R.realized), R.realized>=0?A:T],
-    ['Float PnL', sgn(R.float),    R.float>=0?A:T],
+    ['Total PnL', smoney(R.total), R.total>=0?A:T],
+    ['Grid PnL',  smoney(R.realized), R.realized>=0?A:T],
+    ['Float PnL', smoney(R.float),    R.float>=0?A:T],
   ];
   const colB = [
-    ['такси',   '−'+usd(R.fees), hotc],
-    ['долари',  usd(R.cash),     dim],
-    [S.sym,     fmt(R.qty, R.qty<1?5:3)+'  ≈'+usd(R.qty*glLast), dim],
+    ['такси',   '−'+money(R.fees), hotc],
+    ['долари',  money(R.cash),     dim],
+    [S.sym,     fmt(R.qty, 6),     dim],
   ];
 
   g.font = '400 18px '+css.getPropertyValue('--mono');
