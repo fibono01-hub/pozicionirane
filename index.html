@@ -900,7 +900,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
 </div>
 
 <footer>
-  <span style="font-family:var(--mono);color:var(--ink)">версия 46</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
+  <span style="font-family:var(--mono);color:var(--ink)">версия 47</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
   Фъндингът и откритият интерес идват от публичните API-та на Binance, Bybit, OKX и Hyperliquid.
   Ако някоя борса покаже грешка, най-честата причина е блокиране по регион или ограничение на заявките — изчакай минута и обнови.
 </footer>
@@ -2008,13 +2008,42 @@ function loadTab(tab){
 }
 
 // Всичко, което е вързано за конкретна монета, пада при смяна на актива:
-// отрези, маркери, измервания. Иначе индексите сочат в чужда редица.
+// отрези, маркери, измервания, кеширани редици и — важното — ценовите полета.
+// Иначе индексите сочат в чужда редица, а в полетата стоят цени на друга монета.
 function resetSymState(){
+  // отрези и маркери: пазят индекси, които в нова редица значат друго
   saved = []; sel = null; mView = null; mMark = null;
-  vpView = null; vpMark = null; vp = null; vpRaw = null;
-  grView = null; grData = null;
-  lqView = null; lqMark = null; secMark = null;
-  etf = null;
+  vpView = null; vpMark = null; vpGeomCache = null;
+  grView = null; lqView = null; lqMark = null; secMark = null; cursor = null; view = null;
+
+  // кеширани редици: по-добре празно, отколкото чужди данни до идването на новите
+  meas = null; vp = null; vpRaw = null; lq = null; price = null;
+  grData = null; grRes = null; grOpt = null; heatData = null;
+  chain = null; cmError = null;
+  caLivePx = null; caFunding = 0;
+
+  // състояние на живата мрежа
+  glSt = null; glTicks = []; glLast = 0; glStart = 0;
+
+  // живият поток на ликвидациите е абониран за стария символ
+  if(lfOn){
+    lfOn = false; lfClose();
+    const lb = document.getElementById('lf-on');
+    if(lb){ lb.setAttribute('aria-pressed', false); lb.textContent = 'Свържи'; }
+    lfStatus(0, 'спряно при смяна на актива');
+    lfEvents = []; renderLf();
+  }
+
+  // ETF-ите следват актива само за трите, за които има данни
+  if(['BTC','ETH','SOL'].includes(S.sym) && S.etfAsset !== S.sym){ etf = null; cbp = null; }
+
+  // Ценовите полета се отнасят за конкретна монета: долна и горна граница на
+  // мрежата, вход и цели в калкулатора. Празним ги, за да се попълнят наново
+  // от данните на новата монета — иначе мрежата стои с границите на етера.
+  ['gr-lo','gr-hi','ca-entry','ca-tp','ca-sl'].forEach(id=>{
+    const el = document.getElementById(id); if(el) el.value = '';
+  });
+
   renderSaved();
 }
 
