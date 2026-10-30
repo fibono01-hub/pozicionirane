@@ -247,7 +247,10 @@ canvas{width:100%;height:290px;display:block;
 .split{display:flex;height:22px;border-radius:1px;overflow:hidden;background:var(--panel)}
 .split .l{background:var(--long)}
 .split .s{background:var(--short)}
-.ratio .foot{font-size:11px;color:var(--ink-dim);margin-top:5px}
+.ratio .foot{font-size:11px;color:var(--ink-dim);margin-top:5px;line-height:1.5}
+.ratio .spark{display:block;width:100%;height:34px;margin-top:7px}
+.ratio .delta{font-family:var(--mono);font-size:11px}
+#rt-period{margin-bottom:10px}
 
 /* ---- hyperliquid ---- */
 .addr{display:flex;gap:8px;margin-bottom:14px}
@@ -353,6 +356,12 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
 
 <section>
   <h2>Съотношение лонг / шорт</h2>
+  <div class="controls" id="rt-period">
+    <button data-rp="5m">5м</button>
+    <button data-rp="15m" aria-pressed="true">15м</button>
+    <button data-rp="1h">1ч</button>
+    <button data-rp="4h">4ч</button>
+  </div>
   <div id="ratios"></div>
 </section>
 
@@ -887,7 +896,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
 </div>
 
 <footer>
-  <span style="font-family:var(--mono);color:var(--ink)">версия 43</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
+  <span style="font-family:var(--mono);color:var(--ink)">версия 44</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
   Фъндингът и откритият интерес идват от публичните API-та на Binance, Bybit, OKX и Hyperliquid.
   Ако някоя борса покаже грешка, най-честата причина е блокиране по регион или ограничение на заявките — изчакай минута и обнови.
 </footer>
@@ -913,7 +922,8 @@ const smoney = (n, dp=2) => (n==null||!isFinite(n)) ? '—'
   : (n>=0?'+':'−')+fmt(Math.abs(n),dp)+' USD';
 
 async function j(url,opt){
-  const r = await fetch(url,opt);
+  // no-store, защото Safari в режим "на екрана" сервира стари отговори
+  const r = await fetch(url, Object.assign({cache:'no-store'}, opt||{}));
   if(!r.ok) throw new Error('HTTP '+r.status);
   return r.json();
 }
@@ -1225,6 +1235,47 @@ function drawFlow(){
 }
 
 /* ---------------- лонг/шорт ---------------- */
+// Бинанс публикува тези редове по кофи. При period=1h числото е буквално
+// едно и също цял час — затова по-рано нищо не се движеше. Вече тегли
+// цяла редица, за да се вижда промяната, и показва часа на последната точка.
+let rtPeriod = '15m';
+const RT_N = 48;
+const RT_MIN = { '5m':5, '15m':15, '1h':60, '4h':240 };
+
+function rtSpark(ser, w=280, h=34){
+  const n = ser.length; if(n<2) return '';
+  const ys = ser.map(p=>p.l);
+  let lo = Math.min(...ys), hi = Math.max(...ys);
+  const pad = Math.max(0.35, (hi-lo)*0.18);   // въздух, иначе плоска линия лепне за ръба
+  lo -= pad; hi += pad;
+  const r = 3;                                // инсет, за да не се реже точката на ръба
+  const X = i => r + i/(n-1)*(w-2*r);
+  const Y = v => h - r - (v-lo)/(hi-lo)*(h-2*r);
+  const pts = ser.map((p,i)=>`${X(i).toFixed(1)},${Y(p.l).toFixed(1)}`).join(' ');
+  const mid = Y(50), showMid = 50>lo && 50<hi;
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">`
+    + (showMid ? `<line x1="0" y1="${mid.toFixed(1)}" x2="${w}" y2="${mid.toFixed(1)}" stroke="var(--rule)" stroke-dasharray="3 3"/>` : '')
+    + `<polyline points="${pts}" fill="none" stroke="var(--ink-dim)" stroke-width="1.5"/>`
+    + `<circle cx="${X(n-1).toFixed(1)}" cy="${Y(ys[n-1]).toFixed(1)}" r="2.5" fill="var(--ink)"/></svg>`;
+}
+
+// промяна в процентни пунктове спрямо точката най-близо до преди `mins` минути
+function rtBack(ser, mins){
+  if(ser.length<2) return null;
+  const target = ser[ser.length-1].t - mins*60000;
+  let best = null, bd = Infinity;
+  for(const p of ser.slice(0,-1)){
+    const d = Math.abs(p.t-target);
+    if(d<bd){ bd=d; best=p; }
+  }
+  if(!best || bd > mins*60000*0.6) return null;   // няма достатъчно история
+  return ser[ser.length-1].l - best.l;
+}
+
+const rtDelta = (v, unit='пр.п.') => v==null ? '<span style="color:var(--ink-dim)">няма история</span>'
+  : `<b style="color:${Math.abs(v)<0.05?'var(--ink-dim)':(v>0?'var(--long)':'var(--short)')}">`
+    + (v>=0?'+':'−')+fmt(Math.abs(v),2)+' '+unit+'</b>';
+
 async function loadRatios(){
   const box = document.getElementById('ratios');
   const sym = S.sym+'USDT';
@@ -1234,23 +1285,75 @@ async function loadRatios(){
   ];
   const out = {};
   box.innerHTML='';
+  const per = RT_MIN[rtPeriod] || 15;
+
   for(const s of sets){
     let d;
-    try{ d = await j(`${bn}/futures/data/${s.q}?symbol=${sym}&period=1h&limit=1`); }
-    catch(e){ box.insertAdjacentHTML('beforeend',`<div class="ratio"><div class="head"><span>${s.title}</span><span style="color:var(--hot)">няма достъп</span></div></div>`); continue; }
-    const r = d[0]; if(!r) continue;
-    const l = parseFloat(r.longAccount ?? r.longPosition)*100;
-    const sh = 100-l;
+    try{
+      d = await j(`${bn}/futures/data/${s.q}?symbol=${sym}&period=${rtPeriod}&limit=${RT_N}&_=${Date.now()}`);
+    } catch(e){
+      box.insertAdjacentHTML('beforeend',
+        `<div class="ratio"><div class="head"><span>${s.title}</span><span style="color:var(--hot)">няма достъп</span></div>
+         <div class="foot">${e.message}</div></div>`);
+      continue;
+    }
+    if(!Array.isArray(d) || !d.length){
+      box.insertAdjacentHTML('beforeend',
+        `<div class="ratio"><div class="head"><span>${s.title}</span><span style="color:var(--hot)">празен отговор</span></div></div>`);
+      continue;
+    }
+
+    const ser = d.map(r=>({
+        t: +r.timestamp,
+        l: parseFloat(r.longAccount ?? r.longPosition)*100,
+        s: parseFloat(r.shortAccount ?? r.shortPosition)*100
+      }))
+      .filter(x=>isFinite(x.t) && isFinite(x.l))
+      .sort((x,y)=>x.t-y.t);                       // не разчитаме на реда от борсата
+    if(!ser.length) continue;
+
+    const cur = ser[ser.length-1];
+    const l = cur.l;
+    // ползваме реалното shortAccount, не 100−l; ако двете не се сумират, нещо не е наред
+    const sh = isFinite(cur.s) ? cur.s : 100-l;
+    const sumOk = Math.abs(l+sh-100) < 0.5;
+
+    const d1 = rtBack(ser, per);                   // една кофа назад
+    const d4 = rtBack(ser, 240);                   // около 4 часа назад
+    const age = Date.now() - cur.t;
+    const stale = age > per*60000*2.2;
+
     out[s.key] = l;
+    out[s.key+'Ser'] = ser;
+    out[s.key+'D1'] = d1;
+    out[s.key+'D4'] = d4;
+
+    const ts = new Date(cur.t);
+    const hhmm = String(ts.getHours()).padStart(2,'0')+':'+String(ts.getMinutes()).padStart(2,'0');
+
     box.insertAdjacentHTML('beforeend',
       `<div class="ratio">
-        <div class="head"><span>${s.title}</span><span>${fmt(l,1)} / ${fmt(sh,1)}</span></div>
+        <div class="head"><span>${s.title}</span><span>${fmt(l,2)} / ${fmt(sh,2)}</span></div>
         <div class="split"><span class="l" style="width:${l}%"></span><span class="s" style="width:${sh}%"></span></div>
-        <div class="foot">${s.foot}</div>
+        ${rtSpark(ser)}
+        <div class="foot">
+          <span class="delta">Δ ${rtPeriod} ${rtDelta(d1)} · Δ 4ч ${rtDelta(d4)}</span><br>
+          последна точка <b>${hhmm}</b>${stale?' <span style="color:var(--hot)">— по-стара от две кофи, борсата изостава</span>':''} ·
+          ${ser.length} точки на ${rtPeriod}
+          ${sumOk?'':' · <span style="color:var(--hot)">лонг+шорт ≠ 100, числата са подозрителни</span>'}
+          <br>${s.foot}
+        </div>
       </div>`);
   }
   return out;
 }
+
+document.getElementById('rt-period').addEventListener('click', e=>{
+  const b = e.target.closest('button[data-rp]'); if(!b) return;
+  rtPeriod = b.dataset.rp;
+  document.querySelectorAll('#rt-period button').forEach(x=>x.setAttribute('aria-pressed', x===b));
+  loadRatios().then(rt=>{ S.ratios = rt; analyse(S.sr, S.funding, rt, S.sp); }).catch(()=>null);
+});
 
 /* ---------------- Hyperliquid ---------------- */
 async function loadHL(){
@@ -1379,12 +1482,34 @@ function analyse(sr, funding, ratios, sp){
 
   if(ratios && ratios.crowd!=null && ratios.top!=null){
     const d = ratios.crowd - ratios.top;
-    let p3 = `Тълпата е <b>${fmt(ratios.crowd,0)}%</b> лонг, а големите играчи <b>${fmt(ratios.top,0)}%</b>.`;
+    let p3 = `Тълпата е <b>${fmt(ratios.crowd,1)}%</b> лонг, а големите играчи <b>${fmt(ratios.top,1)}%</b>.`;
     if(d>10) p3 += ' Дребните сметки са осезаемо по-бичи от капитала — при разминаване втората група исторически е по-надеждната.';
     else if(d<-10) p3 += ' Капиталът е по-бичи от тълпата. По-рядката комбинация и обикновено по-интересната.';
     else p3 += ' Двете групи гледат в една посока, така че тук няма сигнал за разминаване.';
     if(ratios.crowd>75 || ratios.crowd<25) p3 += ' Дребните сметки са в крайност.';
     P.push(p3);
+
+    // Нивото се мени бавно, затова отделно изречение за движението му.
+    // Точно тук се чете реакцията на тълпата към спада.
+    const c4 = ratios.crowdD4, t4 = ratios.topD4;
+    if(c4!=null){
+      const u = v => (v>=0?'+':'−')+fmt(Math.abs(v),2)+' пр.п.';
+      let p3b = `За последните около 4 часа дялът на лонговете сред всички сметки се е променил с <b>${u(c4)}</b>`;
+      p3b += t4!=null ? `, а при големите играчи с <b>${u(t4)}</b>.` : '.';
+      if(Math.abs(c4)<0.3)
+        p3b += ' Практически без промяна — тълпата не е реагирала на движението на цената, нито е излязла, нито е добавила.';
+      else if(down && c4>0.8)
+        p3b += ' Цената пада, а лонговете се увеличават: това е купуване на спада, което трупа позиции точно срещу посоката. Такова натрупване прави следващото спускане по-склонно към каскада от ликвидации.';
+      else if(down && c4<-0.8)
+        p3b += ' Цената пада и лонговете намаляват — позиции се затварят по хода на движението. Това е разчистване, а не натрупване.';
+      else if(up && c4<-0.8)
+        p3b += ' Цената расте, а лонговете намаляват. Част от тълпата продава в силата, което обикновено оставя по-малко гориво за принудителни продажби.';
+      else if(up && c4>0.8)
+        p3b += ' Цената расте и тълпата се натрупва в същата посока — догонване.';
+      if(c4!=null && t4!=null && Math.abs(c4-t4)>1.2)
+        p3b += ` Двете групи при това се движат различно: разликата в промяната е ${fmt(Math.abs(c4-t4),2)} пр.п., тоест тълпата и капиталът не правят едно и също.`;
+      P.push(p3b);
+    }
   }
 
   if(sp && sp.qv.length>3){
@@ -1417,6 +1542,8 @@ function analyse(sr, funding, ratios, sp){
   if(Math.abs(dOi)>8) score++;
   if(ratios && (ratios.crowd>72 || ratios.crowd<28)) score++;
   if(ratios && ratios.crowd!=null && ratios.top!=null && Math.abs(ratios.crowd-ratios.top)>12) score++;
+  // натрупване срещу посоката на цената е отделен принос към риска
+  if(ratios && ratios.crowdD4!=null && ((down && ratios.crowdD4>1) || (up && ratios.crowdD4<-1))) score++;
   const lvl = score<=1 ? ['ниско струпване','lo'] : score===2 ? ['средно струпване','mid'] : ['високо струпване','hi'];
   chip.textContent = lvl[0]; chip.className = lvl[1];
 
@@ -5542,7 +5669,7 @@ async function refresh(){
     loadHL().catch(()=>null),
     loadSpot().catch(()=>null),
   ]);
-  S.funding = f; S.ratios = rt;
+  S.funding = f; S.ratios = rt; S.sr = sr; S.sp = sp;
   drawFlow();
   verdict(sr, avgOf(f));
   analyse(sr, f, rt, sp);
@@ -5567,7 +5694,7 @@ document.getElementById('ranges').addEventListener('click', e=>{
   S.range = b.dataset.range;
   document.querySelectorAll('#ranges button').forEach(x=>x.setAttribute('aria-pressed', x===b));
   Promise.all([loadSeries().catch(()=>null), loadSpot().catch(()=>null)])
-    .then(([sr,sp])=>{ drawFlow(); verdict(sr, avgOf(S.funding)); analyse(sr, S.funding, S.ratios, sp); });
+    .then(([sr,sp])=>{ S.sr=sr; S.sp=sp; drawFlow(); verdict(sr, avgOf(S.funding)); analyse(sr, S.funding, S.ratios, sp); });
 });
 document.getElementById('reload').addEventListener('click', refresh);
 document.getElementById('hl-go').addEventListener('click', loadAddress);
