@@ -900,7 +900,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
 </div>
 
 <footer>
-  <span style="font-family:var(--mono);color:var(--ink)">версия 45</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
+  <span style="font-family:var(--mono);color:var(--ink)">версия 46</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
   Фъндингът и откритият интерес идват от публичните API-та на Binance, Bybit, OKX и Hyperliquid.
   Ако някоя борса покаже грешка, най-честата причина е блокиране по регион или ограничение на заявките — изчакай минута и обнови.
 </footer>
@@ -1973,6 +1973,51 @@ S.panMode = true;   // плъзгането е основното; маркер�
   });
 })();
 
+// Данните на един таб се теглят на едно място. Преди това всеки таб се
+// зареждаше от две места при влизане (двойна заявка), а при смяна на актива
+// се презареждаха само Цена, Индикатори и Спектър — останалите оставаха на
+// старата монета, докато не им пипнеш интервала.
+function loadTab(tab){
+  if(tab==='calc'){ loadCalc(); return; }
+  if(tab==='grid'){ loadGrid().catch(()=>{}); return; }
+  if(tab==='liq'){
+    loadLq().catch(e=>{ document.getElementById('lq-levels').innerHTML =
+      `<div class="empty">Няма достъп до данните. Причина: ${e.message||e}</div>`; });
+    return;
+  }
+  if(tab==='vp'){
+    loadVp().catch(()=>{
+      document.getElementById('vp-read').innerHTML='<div class="empty">Няма достъп до данните.</div>'; });
+    return;
+  }
+  if(tab==='meas'){ renderSaved(); loadMeas().catch(()=>{}); return; }
+  if(tab==='spec'){ loadSpec().catch(()=>{}); return; }
+  if(tab==='etf'){
+    if(['BTC','ETH','SOL'].includes(S.sym)){
+      S.etfAsset = S.sym;
+      document.querySelectorAll('#etf-asset button').forEach(x=>x.setAttribute('aria-pressed', x.dataset.ea===S.sym));
+    }
+    const row = document.getElementById('etf-key-row');
+    if(row && getKey()) row.dataset.ok = '1';
+    if(!etf) loadEtf(); else drawEtf();
+    loadCbp();
+    return;
+  }
+  if(tab==='price'){ renderChips(); renderOC(); loadPrice().catch(()=>{}); return; }
+  if(tab==='ind'){ loadInd(); return; }
+}
+
+// Всичко, което е вързано за конкретна монета, пада при смяна на актива:
+// отрези, маркери, измервания. Иначе индексите сочат в чужда редица.
+function resetSymState(){
+  saved = []; sel = null; mView = null; mMark = null;
+  vpView = null; vpMark = null; vp = null; vpRaw = null;
+  grView = null; grData = null;
+  lqView = null; lqMark = null; secMark = null;
+  etf = null;
+  renderSaved();
+}
+
 document.getElementById('tabs').addEventListener('click', e=>{
   const b = e.target.closest('button[data-tab]'); if(!b) return;
   S.tab = b.dataset.tab;
@@ -1987,31 +2032,14 @@ document.getElementById('tabs').addEventListener('click', e=>{
   document.getElementById('tab-liq').hidden   = S.tab!=='liq';
   document.getElementById('tab-calc').hidden  = S.tab!=='calc';
   document.getElementById('tab-grid').hidden  = S.tab!=='grid';
-  if(S.tab==='calc') loadCalc(); else caStop();
-  if(S.tab==='grid') loadGrid().catch(()=>{}); else if(glOn){ glOn=false;
-    const b=document.getElementById('gl-on'); if(b){ b.setAttribute('aria-pressed',false); b.textContent='Пусни на живо'; }
-    glClose(); glStatus(0,'спряно при напускане'); renderGl(); }
-  if(S.tab==='liq') loadLq().catch(e=>{
-    document.getElementById('lq-levels').innerHTML =
-      `<div class="empty">Няма достъп до данните. Причина: ${e.message||e}</div>`; });
-  if(S.tab==='vp') loadVp().catch(()=>{
-    document.getElementById('vp-read').innerHTML='<div class="empty">Няма достъп до данните.</div>'; });
-  if(S.tab==='meas'){ renderSaved(); loadMeas().catch(()=>{}); }
-  if(S.tab==='spec') loadSpec().catch(()=>{});
-  if(S.tab==='meas'){ saved=[]; renderSaved(); loadMeas().catch(()=>{}); }
-  if(S.tab==='vp') loadVp().catch(()=>{});
-  if(S.tab==='etf'){
-    if(['BTC','ETH','SOL'].includes(S.sym)){
-      S.etfAsset = S.sym;
-      document.querySelectorAll('#etf-asset button').forEach(x=>x.setAttribute('aria-pressed', x.dataset.ea===S.sym));
-    }
-    const row = document.getElementById('etf-key-row');
-    if(row && getKey()) row.dataset.ok = '1';
-    if(!etf) loadEtf(); else drawEtf();
-    loadCbp();
+  if(S.tab!=='calc') caStop();
+  if(S.tab!=='grid' && glOn){
+    glOn=false;
+    const gb=document.getElementById('gl-on');
+    if(gb){ gb.setAttribute('aria-pressed',false); gb.textContent='Пусни на живо'; }
+    glClose(); glStatus(0,'спряно при напускане'); renderGl();
   }
-  if(S.tab==='price'){ renderChips(); renderOC(); loadPrice().catch(()=>{}); }
-  if(S.tab==='ind') loadInd();
+  loadTab(S.tab);
 });
 document.getElementById('p-int').addEventListener('click', e=>{
   const b = e.target.closest('button[data-int]');
@@ -5993,12 +6021,18 @@ async function refresh(){
 
 document.getElementById('symbols').addEventListener('click', e=>{
   const b = e.target.closest('button[data-sym]'); if(!b) return;
+  if(S.sym === b.dataset.sym) return;
   S.sym = b.dataset.sym;
   document.querySelectorAll('#symbols button[data-sym]').forEach(x=>x.setAttribute('aria-pressed', x===b));
+  if(glOn){                                    // живата мрежа е вързана за стария символ
+    glOn=false;
+    const gb=document.getElementById('gl-on');
+    if(gb){ gb.setAttribute('aria-pressed',false); gb.textContent='Пусни на живо'; }
+    glClose(); glStatus(0,'спряно при смяна на актива'); renderGl();
+  }
+  resetSymState();
   renderNow(null, null); loadNow();
-  if(S.tab==='price') loadPrice().catch(()=>{});
-  if(S.tab==='ind') loadInd();
-  if(S.tab==='spec') loadSpec().catch(()=>{});
+  loadTab(S.tab);                              // текущият таб се презарежда веднага
   refresh();
 });
 document.getElementById('ranges').addEventListener('click', e=>{
