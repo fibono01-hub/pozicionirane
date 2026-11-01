@@ -900,7 +900,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
 </div>
 
 <footer>
-  <span style="font-family:var(--mono);color:var(--ink)">версия 47</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
+  <span style="font-family:var(--mono);color:var(--ink)">версия 48</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
   Фъндингът и откритият интерес идват от публичните API-та на Binance, Bybit, OKX и Hyperliquid.
   Ако някоя борса покаже грешка, най-честата причина е блокиране по регион или ограничение на заявките — изчакай минута и обнови.
 </footer>
@@ -1580,8 +1580,9 @@ Object.assign(S, { tab:'pos', pInt:'1w', pDays:'max', pLog:false, mas:[
   {t:'sma', n:50,  u:'1w', k:1, on:true},
   {t:'sma', n:200, u:'1w', k:1, on:true},
   {t:'ema', n:200, u:'1d', k:1, on:true},
-  {t:'ema', n:21,  u:'1w', k:1, on:true},
+  {t:'ema', n:21,  u:'1w', k:1, on:false},   // съдържа се в лентата отдолу
 ]});
+S.bmsb = true;   // Bull Market Support Band: SMA 20с и EMA 21с със запълване
 
 const sma = (a,n) => a.map((_,i)=> i<n-1 ? null : a.slice(i-n+1,i+1).reduce((x,y)=>x+y,0)/n);
 function ema(a,n){
@@ -1668,7 +1669,7 @@ async function loadPrice(){
     try{ await loadChain(); }catch(e){ /* нивата просто няма да се появят */ }
   }
 
-  const units = [...new Set(S.mas.filter(m=>m.on).map(m=>m.u))];
+  const units = [...new Set(S.mas.filter(m=>m.on).map(m=>m.u).concat(S.bmsb?['1w']:[]))];
   const need = units.filter(u=>!ref[u]);
 
   const [main, tick, ...fetched] = await Promise.all([
@@ -1684,6 +1685,21 @@ async function loadPrice(){
 
   drawPrice();
   return price;
+}
+
+// Bull Market Support Band: 20-седмична проста и 21-седмична експоненциална
+// средна. Двете почти съвпадат, затова се чете лентата между тях, а не линиите:
+// докато експоненциалната е над простата, краткосрочната инерция е по-силна от
+// бавната средна. Не е сигнал за вход, а описание на режима.
+function bmsbBand(){
+  if(!S.bmsb || !price) return null;
+  const src = ref['1w'];
+  if(!src || src.c.length < 22) return null;
+  const a = sma(src.c, 20), b = ema(src.c, 21);
+  return {
+    sma: alignMA(src.t, a, price.t),
+    ema: alignMA(src.t, b, price.t),
+  };
 }
 
 function activeLevels(){
@@ -1750,7 +1766,11 @@ function drawPrice(){
   const dH = dlines.length ? 150 : 0, dGap = dlines.length ? 22 : 0;
   const pb = H - pad.b - dH - dGap;
 
+  const bbAll = bmsbBand();
+  const bb = bbAll ? { sma: bbAll.sma.slice(i0,i1+1), ema: bbAll.ema.slice(i0,i1+1) } : null;
+
   const pool = vis.concat(...lines.map(l=>l.vals.filter(v=>v!=null)));
+  if(bb) pool.push(...bb.sma.filter(v=>v!=null&&isFinite(v)), ...bb.ema.filter(v=>v!=null&&isFinite(v)));
   const tr = S.pLog ? Math.log : (v=>v);
   const mn=Math.min(...pool), mx=Math.max(...pool);
   const padv=(tr(mx)-tr(mn))*0.06 || 1;
@@ -1767,6 +1787,27 @@ function drawPrice(){
     const v = inv(yy);
     g.fillStyle = dim;
     g.fillText(v>=1000 ? (v/1000).toFixed(1)+'K' : v.toFixed(v<10?3:1), W-pad.r+10, yy+7);
+  }
+
+  // лентата се рисува под всичко останало, запълнена колона по колона — така
+  // пресичанията сменят цвета на точното място, без да се цепи многоъгълник
+  if(bb){
+    const UPc = css.getPropertyValue('--up').trim(), DNc = css.getPropertyValue('--down').trim();
+    for(let i=0;i<n-1;i++){
+      const a0=bb.sma[i], a1=bb.sma[i+1], b0=bb.ema[i], b1=bb.ema[i+1];
+      if(a0==null||a1==null||b0==null||b1==null) continue;
+      g.fillStyle = (b0>=a0 ? UPc : DNc) + '38';
+      g.beginPath();
+      g.moveTo(x(i),y(a0)); g.lineTo(x(i+1),y(a1));
+      g.lineTo(x(i+1),y(b1)); g.lineTo(x(i),y(b0));
+      g.closePath(); g.fill();
+    }
+    [['sma',DNc],['ema',UPc]].forEach(([k,col])=>{
+      g.beginPath(); let st=false;
+      for(let i=0;i<n;i++){ const v=bb[k][i]; if(v==null) continue;
+        st ? g.lineTo(x(i),y(v)) : (g.moveTo(x(i),y(v)), st=true); }
+      g.strokeStyle = col; g.lineWidth=1.5; g.stroke();
+    });
   }
 
   lines.forEach(l=>{
@@ -1862,8 +1903,11 @@ function renderOC(){
   box.innerHTML = OC.map(o=>
     `<button data-oc="${o.k}" aria-pressed="${!!S.oc[o.k]}">
        <i style="background:${o.color}"></i>${o.name}</button>`).join('')
+    + `<button id="oc-bmsb" aria-pressed="${!!S.bmsb}">
+         <i style="background:linear-gradient(90deg,var(--down),var(--up))"></i>Bull Market Support Band</button>`
     + `<div class="foot" style="font-size:12px;color:var(--ink-dim);margin-top:8px;max-width:58ch;line-height:1.55">
         ${OC.map(o=>`<b style="color:${o.color};font-weight:500">${o.name}</b> — ${o.note}`).join('<br>')}
+        <br><b style="font-weight:500">Bull Market Support Band</b> — 20-седмична проста и 21-седмична експоненциална средна. Запълването е тюркоазено, докато експоненциалната е над простата, и кехлибарено, когато е под нея. Съдържа EMA 21с, затова тя е изключена от чиповете по-горе.
         <br>Terminal price изисква Coin Days Destroyed, което безплатният източник не дава. Top price играе същата роля.</div>`;
 }
 
@@ -2098,6 +2142,13 @@ document.getElementById('p-days-go').addEventListener('click', ()=>{
   loadPrice().catch(()=>{});
 });
 document.getElementById('oc-chips').addEventListener('click', e=>{
+  const bb = e.target.closest('#oc-bmsb');
+  if(bb){
+    S.bmsb = !S.bmsb;
+    bb.setAttribute('aria-pressed', S.bmsb);
+    loadPrice().catch(()=>drawPrice());
+    return;
+  }
   const b = e.target.closest('button[data-oc]'); if(!b) return;
   const k = b.dataset.oc;
   S.oc[k] = !S.oc[k];
@@ -2312,6 +2363,31 @@ function indSeries(){
     if(rr.length>20) vol[i]=stdev(rr)*Math.sqrt(365)*100;
   }
 
+  // ROI: процентна възвръщаемост спрямо цената преди N дни. Плъзгащ прозорец,
+  // не от фиксирана начална дата — така всяка точка отговаря на въпроса
+  // "колко би спечелил, ако беше купил преди толкова време и държал до този ден".
+  const roi = n => c.map((q,i)=>{
+    const b = c[i-n];
+    return (i<n || !isFinite(q) || !isFinite(b) || b<=0) ? null : (q/b-1)*100;
+  });
+
+  // ROI от последния халвинг: нулира се при всеки халвинг, затова се чете като
+  // "докъде е стигнал текущият цикъл спрямо предишните". Само за биткойн —
+  // при другите активи халвинг няма и серията би била безсмислена.
+  const roiHalv = (()=>{
+    if(S.sym!=='BTC') return null;
+    const H = [Date.UTC(2012,10,28), Date.UTC(2016,6,9),
+               Date.UTC(2020,4,11),  Date.UTC(2024,3,20)];
+    const out = new Array(c.length).fill(null);
+    let hi = -1, base = null;
+    for(let i=0;i<c.length;i++){
+      while(hi+1 < H.length && t[i] >= H[hi+1]){ hi++; base = isFinite(c[i])?c[i]:null; }
+      if(hi<0 || base==null || !(base>0) || !isFinite(c[i])) continue;
+      out[i] = (c[i]/base-1)*100;
+    }
+    return out;
+  })();
+
   return {
     z:      { t:chain.t, v:chain.z, px:chain.px, name:'MVRV Z-score', bands:true, signed:true },
     mvrv:   { t, v:chain.mvrv, px, name:'MVRV съотношение', ref:[1] },
@@ -2322,6 +2398,10 @@ function indSeries(){
     mayer:  { t, v:c.map((q,i)=>s200[i]?q/s200[i]:null),  px, name:'Mayer Multiple', ref:[0.8,2.4] },
     w200:   { t, v:c.map((q,i)=>s1400[i]?q/s1400[i]:null), px, name:'Спрямо 200-седмичната', ref:[1] },
     vol:    { t, v:vol, px, name:'Волатилност 30д', ref:[] },
+    roi1y:  { t, v:roi(365),  px, name:'ROI 1 година',  ref:[0], signed:true },
+    roi2y:  { t, v:roi(730),  px, name:'ROI 2 години',  ref:[0], signed:true },
+    roi4y:  { t, v:roi(1460), px, name:'ROI 4 години',  ref:[0], signed:true },
+    ...(roiHalv ? { roiH:{ t, v:roiHalv, px, name:'ROI от халвинга', ref:[0], signed:true } } : {}),
   };
 }
 
@@ -2468,6 +2548,21 @@ async function loadInd(){
     for(let i=dc.length-31;i<dc.length-1;i++) if(i>0) rets.push(Math.log(dc[i+1]/dc[i]));
     const vol = rets.length ? stdev(rets)*Math.sqrt(365)*100 : null;
 
+    // ROI: 1 година от дневните затваряния, 4 години от седмичните — дневните
+    // са само 400 броя и не стигат толкова назад.
+    const back = (arr, n) => {
+      const b = arr[arr.length-1-n], q = arr[arr.length-1];
+      return (arr.length > n && isFinite(b) && b>0 && isFinite(q)) ? (q/b-1)*100 : null;
+    };
+    const roi1y = back(dc, 365) ?? back(wc, 52);
+    const roi4y = back(wc, 208);
+    const roiTxt = v => v==null ? '' :
+        v > 200 ? 'Утроена и повече за периода. Такива стойности се срещат в късната част на възходящ цикъл и рядко се задържат.'
+      : v > 50  ? 'Силна положителна възвръщаемост, но под крайностите на предишните цикли.'
+      : v > 0   ? 'Положителна, но скромна за този клас актив.'
+      : v > -50 ? 'Отрицателна за периода — държането не се е изплатило.'
+      :           'Дълбоко отрицателна. Исторически такива нива са се срещали около циклични дъна, но това се вижда само след факта.';
+
     tech.innerHTML =
       gauge(`RSI 14 (${unit})`, r, '', 0, 100,
         [{w:30,c:T},{w:40,c:N},{w:30,c:R}],
@@ -2488,7 +2583,17 @@ async function loadInd(){
         m200w==null ? 'Няма 200 седмици история за този актив.' : null) +
       gauge('Волатилност 30д', vol, '%', 0, 150,
         [{w:100,c:N}],
-        vol==null ? '' : 'Реализирана волатилност в годишно изражение. Ниските стойности предхождат разширения на диапазона, високите обикновено идват след тях.');
+        vol==null ? '' : 'Реализирана волатилност в годишно изражение. Ниските стойности предхождат разширения на диапазона, високите обикновено идват след тях.') +
+      gauge('ROI 1 година', roi1y, '%', -100, 300,
+        [{w:25,c:T},{w:25,c:N},{w:25,c:N},{w:25,c:R}],
+        roiTxt(roi1y),
+        roi1y==null ? 'Няма година история за този актив.' : null) +
+      gauge('ROI 4 години', roi4y, '%', -100, 900,
+        [{w:10,c:T},{w:40,c:N},{w:50,c:R}],
+        roi4y==null ? '' : (roi4y>0
+          ? 'Покупка преди четири години и държане до днес е на печалба. При биткойн този показател исторически не е слизал под нулата, но извадката е малка и това не е закон.'
+          : 'Покупка преди четири години и държане до днес е на загуба.'),
+        roi4y==null ? 'Няма четири години история за този актив.' : null);
   }catch(e){
     tech.innerHTML = '<div class="empty">Няма достъп до ценовите данни.</div>';
   }
@@ -2554,6 +2659,8 @@ document.getElementById('ind-help').innerHTML = `
   <p><b>NUPL</b> е нереализираната печалба минус загубата, разделена на пазарната капитализация — тоест каква част от текущата оценка е печалба на хартия. Не го тегля отделно: той е алгебрично следствие от MVRV, защото (пазарна − реализирана) / пазарна е същото като 1 − 1/MVRV. Затова и не е независимо потвърждение на MVRV, а негов пренареден запис: двата показателя не могат да си противоречат.</p>
   <p><b>Mayer Multiple</b> е цената, разделена на 200-дневната средна. Проста мярка за разтегнатост, използвана от 2014 насам.</p>
   <p><b>RSI</b> измерва скоростта на движението, не посоката. Крайните стойности не са самостоятелен сигнал за обрат — при силен тренд RSI може да стои над 70 със седмици.</p>
+  <p><b>ROI</b> е възвръщаемостта от покупка преди определено време и държане до съответния ден. Прозорецът е плъзгащ, не от фиксирана дата: всяка точка на графиката отговаря на въпроса „колко би спечелил, ако беше купил точно толкова време преди този ден". Затова ROI 4 години се чете като дали пълен цикъл държане се е изплатило. При биткойн този показател исторически не е слизал под нулата, но зад това стоят три-четири цикъла — извадка, твърде малка за правило.</p>
+  <p><b>ROI от халвинга</b> се нулира при всеки халвинг и показва докъде е стигнал текущият цикъл спрямо предишните на същия етап. Само за биткойн — при другите активи халвинг няма. Сравнението между цикли е съпоставяне на различни пазарни условия, лихвена среда и размер на пазара, тоест прилика във формата не е причинна връзка.</p>
   <p>Данните за MVRV идват от безплатния достъп на Coin Metrics и са позволени за нетърговска употреба. Обновяват се веднъж дневно, така че последната стойност може да изостава с часове.</p>`;
 
 document.getElementById('ind-pick').addEventListener('click', e=>{
