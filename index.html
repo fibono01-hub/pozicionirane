@@ -141,6 +141,7 @@ canvas{width:100%;height:290px;display:block;
 #lf-list table{font-size:12px}
 #lf-list td{padding:7px 0}
 #lqchart{touch-action:pan-y}
+#lfvchart{height:240px;width:100%;display:block;margin-top:10px}
 #lqchart[data-cur="1"]{touch-action:none}
 #lq-cross{margin:10px 0 4px;min-height:22px}
 #lq-cross .mbox{border-top:0;padding-top:0}
@@ -741,7 +742,13 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
     </div>
     <div id="lf-stats" class="stats"></div>
     <div id="lf-list"></div>
-    <p class="note">Потокът <b>forceOrder</b> на Binance дава принудителните затваряния в момента, в който стават — измерени събития, не модел. Виждат се само ликвидации, случили се докато връзката е отворена; история назад няма. Точките им излизат и върху разреза горе, за да се сравнят с изчислените нива.</p>
+    <p class="note">Потокът <b>forceOrder</b> на Binance дава принудителните затваряния в момента, в който стават — измерени събития, не модел. Записът се пази на устройството и се трупа между сесиите; помни се и кога връзката е била отворена, за да се различава „нямаше ликвидация" от „не слушахме". Binance пуска най-много по една поръчка на секунда за символ, тоест при каскада виждаш извадка: цените са верни, размерите са занижени.</p>
+
+    <div class="controls" id="lf-acts">
+      <button id="lf-val">Сравни с модела</button>
+      <button id="lf-wipe">Изчисти записа</button>
+    </div>
+    <div id="lf-valout"></div>
   </section>
 
   <section style="margin-top:22px">
@@ -900,7 +907,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
 </div>
 
 <footer>
-  <span style="font-family:var(--mono);color:var(--ink)">версия 48</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
+  <span style="font-family:var(--mono);color:var(--ink)">версия 49</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
   Фъндингът и откритият интерес идват от публичните API-та на Binance, Bybit, OKX и Hyperliquid.
   Ако някоя борса покаже грешка, най-честата причина е блокиране по регион или ограничение на заявките — изчакай минута и обнови.
 </footer>
@@ -2075,8 +2082,11 @@ function resetSymState(){
     const lb = document.getElementById('lf-on');
     if(lb){ lb.setAttribute('aria-pressed', false); lb.textContent = 'Свържи'; }
     lfStatus(0, 'спряно при смяна на актива');
-    lfEvents = []; renderLf();
   }
+  // записът е за актив: зарежда се този на новия, независимо дали потокът е текъл
+  lfLoad(S.sym);
+  const vo = document.getElementById('lf-valout'); if(vo) vo.innerHTML = '';
+  renderLf();
 
   // ETF-ите следват актива само за трите, за които има данни
   if(['BTC','ETH','SOL'].includes(S.sym) && S.etfAsset !== S.sym){ etf = null; cbp = null; }
@@ -5189,6 +5199,71 @@ document.getElementById('ca-help').innerHTML = `
 let lfWs = null, lfOn = false, lfRetry = 0, lfTimer = null;
 let lfEvents = [];                 // {t, side:'long'|'short', px, usd}
 let lfSum = { long:0, short:0, n:0 };
+let lfCover = [];                  // [[от, до], …] — кога връзката наистина е била отворена
+
+/* --- запис, който оцелява при презареждане ---
+   Без него потокът е безполезен за проверка: съдържа само каквото е влязло,
+   докато табът е бил отворен. Пазим и интервалите на покритие, защото без тях
+   не се различава "нямаше ликвидация" от "не слушахме". */
+const LF_KEY  = sym => 'lf.'+sym;
+const LF_MAXN = 8000;              // ~400 KB на актив
+const LF_MAXD = 45;                // дни история
+
+function lfMergeCover(cov){
+  const a = cov.filter(c=>Array.isArray(c)&&c.length===2&&isFinite(c[0])&&isFinite(c[1]))
+               .sort((x,y)=>x[0]-y[0]);
+  const out = [];
+  for(const c of a){
+    const last = out[out.length-1];
+    // интервали на по-малко от 2 минути един от друг се сливат — кратките
+    // прекъсвания при повторно свързване не са дупки в слушането
+    if(last && c[0] <= last[1] + 120000) last[1] = Math.max(last[1], c[1]);
+    else out.push([c[0], c[1]]);
+  }
+  return out;
+}
+
+function lfLoad(sym){
+  lfEvents = []; lfCover = []; lfSum = { long:0, short:0, n:0 };
+  let raw = null;
+  try{ raw = localStorage.getItem(LF_KEY(sym)); }catch(e){ return; }
+  if(!raw) return;
+  let d; try{ d = JSON.parse(raw); }catch(e){ return; }
+  if(!d || !Array.isArray(d.ev)) return;
+  const cut = Date.now() - LF_MAXD*86400000;
+  lfEvents = d.ev.filter(e=>e && e.t>cut && isFinite(e.p) && e.p>0)
+                 .map(e=>({ t:e.t, side: e.s ? 'short' : 'long', px:e.p, usd:e.u||0 }))
+                 .sort((a,b)=>b.t-a.t);
+  lfCover = lfMergeCover((d.cov||[]).filter(c=>c[1]>cut));
+  lfEvents.forEach(e=>{ lfSum[e.side] += e.usd; lfSum.n++; });
+}
+
+let lfSaveTimer = null;
+function lfSave(now){
+  if(lfSaveTimer){ clearTimeout(lfSaveTimer); lfSaveTimer = null; }
+  if(!now){ lfSaveTimer = setTimeout(()=>lfSave(true), 3000); return; }
+  const cut = Date.now() - LF_MAXD*86400000;
+  let ev = lfEvents.filter(e=>e.t>cut);
+  if(ev.length > LF_MAXN) ev = ev.slice(0, LF_MAXN);
+  const pack = n => JSON.stringify({
+    v:1,
+    ev: ev.slice(0, n).map(e=>({ t:e.t, s: e.side==='short'?1:0, p:+e.px.toFixed(6), u:Math.round(e.usd) })),
+    cov: lfCover
+  });
+  for(const n of [ev.length, 2000, 500]){            // при пълно хранилище режем и опитваме пак
+    try{ localStorage.setItem(LF_KEY(S.sym), pack(n)); return; }
+    catch(e){ /* QuotaExceeded — следващият, по-малък опит */ }
+  }
+}
+
+// удължава текущия интервал на покритие; вика се при свързване и периодично
+function lfTouchCover(){
+  if(!lfOn) return;
+  const t = Date.now(), last = lfCover[lfCover.length-1];
+  if(last && t - last[1] < 120000) last[1] = t;
+  else lfCover.push([t, t]);
+}
+let lfCoverTimer = null;
 
 function lfStatus(state, label){
   const d = document.getElementById('lf-dot'), l = document.getElementById('lf-lbl');
@@ -5198,6 +5273,8 @@ function lfStatus(state, label){
 
 function lfClose(){
   if(lfTimer){ clearTimeout(lfTimer); lfTimer = null; }
+  if(lfCoverTimer){ clearInterval(lfCoverTimer); lfCoverTimer = null; }
+  if(lfOn){ lfTouchCover(); lfSave(true); }
   if(lfWs){
     const w = lfWs; lfWs = null;
     try{ w.onclose = null; w.onerror = null; w.onmessage = null; w.close(); }catch(e){}
@@ -5214,7 +5291,12 @@ function lfConnect(){
   catch(e){ lfStatus(0, 'няма връзка'); return; }
   lfWs = ws;
 
-  ws.onopen = () => { lfRetry = 0; lfStatus(1, 'на живо · '+S.sym); };
+  ws.onopen = () => {
+    lfRetry = 0; lfStatus(1, 'на живо · '+S.sym);
+    lfTouchCover();
+    if(lfCoverTimer) clearInterval(lfCoverTimer);
+    lfCoverTimer = setInterval(()=>{ lfTouchCover(); lfSave(); }, 30000);
+  };
 
   ws.onmessage = ev => {
     let m; try{ m = JSON.parse(ev.data); }catch(e){ return; }
@@ -5229,6 +5311,7 @@ function lfConnect(){
     lfEvents.unshift({ t: m.E || Date.now(), side, px, usd });
     if(lfEvents.length > 200) lfEvents.length = 200;
     lfSum[side] += usd; lfSum.n++;
+    lfTouchCover(); lfSave();
     lfStatus(2, 'събитие · '+S.sym);
     setTimeout(()=>{ if(lfOn && lfWs===ws) lfStatus(1, 'на живо · '+S.sym); }, 400);
     renderLf();
@@ -5244,6 +5327,175 @@ function lfConnect(){
     lfStatus(0, `прекъсна · опит след ${Math.round(wait/1000)}с`);
     lfTimer = setTimeout(lfConnect, wait);
   };
+}
+
+/* --- проверка на модела срещу наблюдаваните ликвидации ---
+   Ликвидация може да стане само там, където цената е била. Сурова хистограма
+   на ликвидационните цени затова показва главно къде цената е прекарала време
+   и би „потвърдила" всеки модел. Сравнението тук е обусловено: гледат се само
+   кошчетата, през които цената наистина е минала в периодите със запис, и за
+   всяко се взема плътността отпреди бара — преди моделът да е изчистил нивото. */
+function lfValidate(){
+  if(!lq || !lq.grid || !lq.grid.length) return { err:'Картата на ликвидациите не е заредена.' };
+  if(!lfEvents.length) return { err:'Няма записани събития. Натисни „Свържи" и остави връзката отворена.' };
+  if(!lfCover.length)  return { err:'Няма записани периоди на слушане.' };
+
+  const t = lq.t, n = t.length;
+  // стъпката се чете от самите времена, а не от настройката: по-устойчиво е,
+  // ако борсата върне друга разделителна способност от поисканата
+  const diffs = []; for(let i=1;i<n;i++) diffs.push(t[i]-t[i-1]);
+  diffs.sort((a,b)=>a-b);
+  const barMs = diffs.length ? diffs[Math.floor(diffs.length/2)] : 3600e3;
+  // Припокриване на интервали, не проверка в две точки: ако си слушал 10 минути
+  // насред един час, часовата свещ е частично покрита и трябва да влезе.
+  const covered = (a, bEnd) => lfCover.some(c => c[0] <= bEnd && c[1] >= a);
+
+  // двоично търсене на бара, който съдържа даден миг
+  const barAt = ts => {
+    if(ts < t[0]) return -1;
+    let lo=0, hi=n-1;
+    while(lo<hi){ const mid=(lo+hi+1)>>1; if(t[mid]<=ts) lo=mid; else hi=mid-1; }
+    const span = lo+1<n ? t[lo+1]-t[lo] : barMs;
+    return ts < t[lo]+span ? lo : -1;
+  };
+
+  const obs = new Float64Array(LQ_NB);       // наблюдаван оборот по кошче
+  const obsN = new Int32Array(LQ_NB);
+  const evDens = [];
+  let outside = 0;
+
+  // Сравнението е по двойки В РАМКИТЕ НА СЪЩИЯ БАР: плътността там, където е
+  // станала ликвидацията, спрямо останалите кошчета, през които същата свещ е
+  // минала. Така широките и тесните свещи не се претеглят различно и при липса
+  // на сигнал отношението е точно 1, а делът точно 50%.
+  const ratios = [], pcts = [];
+  for(const e of lfEvents){
+    const k = barAt(e.t);
+    if(k < 1){ outside++; continue; }
+    const b = lq.bin(e.px);
+    if(b < 0 || b >= LQ_NB){ outside++; continue; }
+    obs[b] += e.usd; obsN[b]++;
+
+    const b0 = Math.max(0, lq.bin(lq.l[k])), b1 = Math.min(LQ_NB-1, lq.bin(lq.h[k]));
+    if(b1 < b0) continue;
+    const row = lq.grid[k-1];
+    const dens = row[b];
+    let sum = 0, lower = 0, equal = 0, cnt = 0;
+    for(let bb=b0;bb<=b1;bb++){
+      const v = row[bb]; sum += v; cnt++;
+      if(v < dens) lower++; else if(v === dens) equal++;
+    }
+    if(!cnt) continue;
+    const avg = sum/cnt;
+    if(avg > 0) ratios.push(dens/avg);
+    pcts.push((lower + equal/2)/cnt);
+    evDens.push(dens);
+  }
+
+  // базова линия: всяко посетено кошче в покрито време, със същата мярка
+  const base = [];
+  const expo = new Float64Array(LQ_NB), pred = new Float64Array(LQ_NB);
+  let bars = 0;
+  for(let i=1;i<n;i++){
+    if(!covered(t[i], t[i]+barMs)) continue;
+    bars++;
+    const b0 = Math.max(0, lq.bin(lq.l[i])), b1 = Math.min(LQ_NB-1, lq.bin(lq.h[i]));
+    for(let b=b0;b<=b1;b++){
+      const v = lq.grid[i-1][b];
+      base.push(v); expo[b]++; pred[b] += v;
+    }
+  }
+  for(let b=0;b<LQ_NB;b++) if(expo[b]) pred[b] /= expo[b];
+
+  if(!evDens.length) return { err:`Нито едно от ${lfEvents.length} записани събития не попада в заредения период на картата. Увеличи обхвата ѝ или запиши още.`, outside };
+  if(!base.length)   return { err:'Периодите със запис не се застъпват със заредената карта.' };
+
+  const mean = a => a.reduce((x,y)=>x+y,0)/a.length;
+  const mEv = mean(evDens), mBase = mean(base);
+  const lift = ratios.length ? mean(ratios) : null;
+  const above = pcts.length ? mean(pcts)*100 : null;
+
+  const span = [Math.min(...lfEvents.map(e=>e.t)), Math.max(...lfEvents.map(e=>e.t))];
+  const coverMs = lfCover.reduce((a,c)=>a+(c[1]-c[0]),0);
+
+  return { obs, obsN, pred, expo, lift, mEv, mBase, above,
+           nEv:evDens.length, outside, bars, span, coverMs, total:lfEvents.length };
+}
+
+function renderLfVal(){
+  const box = document.getElementById('lf-valout'); if(!box) return;
+  const R = lfValidate();
+  if(R.err){ box.innerHTML = `<div class="empty">${R.err}</div>`; return; }
+
+  const hrs = R.coverMs/3600000;
+  const d0 = new Date(R.span[0]), d1 = new Date(R.span[1]);
+  const fdt = d => d.toLocaleString('bg-BG',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+  // При малко събития отношението скача силно от шум. По-честно е да се каже,
+  // отколкото да се чете наклон там, където няма.
+  const thin = R.nEv < 100 || R.bars < 20;
+  const verdict = thin
+    ? `Извадката е твърде малка за заключение: ${R.nEv} съпоставени събития в ${R.bars} свещи. Числата горе се движат силно от шум при този обем — остави записа да върви поне няколко дни активна търговия, преди да ги четеш. Ориентир: под стотина събития всяка стойност между 0,5× и 2× е съвместима със „няма сигнал".`
+    : R.lift==null ? ''
+    : R.lift > 1.3 ? 'Моделът носи сигнал: ликвидациите падат в кошчета с осезаемо по-висока предсказана плътност от средното посетено кошче.'
+    : R.lift > 1.05 ? 'Слаб сигнал. Посоката е правилната, но превесът е малък и при толкова събития може да е случаен.'
+    : R.lift > 0.95 ? 'Няма сигнал: ликвидациите падат там, където и случайно посетено кошче, тоест моделът не добавя информация над това къде цената е била.'
+    : 'Обратен сигнал — ликвидациите избягват кошчетата, които моделът смята за плътни. Това е по-лошо от липса на сигнал и значи грешка в допусканията.';
+
+  box.innerHTML = `<div class="stats">
+      <div><b>${R.nEv}</b><span>съпоставени събития${R.outside?` · ${R.outside} извън картата`:''}</span></div>
+      <div><b>${fmt(hrs,1)} ч</b><span>записано слушане · ${R.bars} свещи</span></div>
+      <div><b class="${thin?'':(R.lift>1.05?'pos':R.lift<0.95?'neg':'')}">${R.lift==null?'—':fmt(R.lift,2)+'×'}</b><span>плътност при ликвидация спрямо средното${thin?' · малка извадка':''}</span></div>
+      <div><b>${R.above==null?'—':fmt(R.above,0)+'%'}</b><span>среден ранг в рамките на свещта (50% = случайност)</span></div>
+    </div>
+    <canvas id="lfvchart" width="1400" height="480"></canvas>
+    <div class="legend">
+      <span><i style="background:var(--hot);height:9px"></i>наблюдаван оборот</span>
+      <span><i style="background:var(--ink-dim)"></i>предсказана плътност</span>
+      <span style="margin-left:auto;font-size:11px">${fdt(d0)} — ${fdt(d1)}</span>
+    </div>
+    <p class="note">Двете криви са мащабирани поотделно, всяка спрямо собствения си връх: сравнява се формата, не височината. Размерите на наблюдаваните ликвидации са извадка заради ограничението на потока, затова отношението горе е по-надеждно от самите стълбове.</p>
+    <p class="note">${verdict}</p>`;
+  drawLfVal(R);
+}
+
+function drawLfVal(R){
+  const cv = document.getElementById('lfvchart'); if(!cv) return;
+  const g = cv.getContext('2d'), W=cv.width, H=cv.height, pad={l:10,r:10,t:14,b:30};
+  g.clearRect(0,0,W,H);
+  const css = getComputedStyle(document.documentElement);
+  const dim=css.getPropertyValue('--ink-dim').trim(), rule=css.getPropertyValue('--rule').trim();
+  const hot=css.getPropertyValue('--hot').trim(), ink=css.getPropertyValue('--ink').trim();
+
+  // само посетените кошчета
+  let b0=-1, b1=-1;
+  for(let b=0;b<LQ_NB;b++) if(R.expo[b]){ if(b0<0) b0=b; b1=b; }
+  if(b0<0) return;
+  const m = b1-b0+1;
+  const mxO = Math.max(...Array.from({length:m},(_,k)=>R.obs[b0+k])) || 1;
+  const mxP = Math.max(...Array.from({length:m},(_,k)=>R.pred[b0+k])) || 1;
+  const x = k => pad.l + k*(W-pad.l-pad.r)/Math.max(1,m-1);
+  const yO = v => H-pad.b - v/mxO*(H-pad.t-pad.b);
+  const yP = v => H-pad.b - v/mxP*(H-pad.t-pad.b);
+
+  g.strokeStyle = rule; g.lineWidth=1;
+  g.beginPath(); g.moveTo(pad.l,H-pad.b); g.lineTo(W-pad.r,H-pad.b); g.stroke();
+
+  const bw = Math.max(2, (W-pad.l-pad.r)/m*0.8);
+  g.fillStyle = hot;
+  for(let k=0;k<m;k++){ const v=R.obs[b0+k]; if(!v) continue;
+    g.fillRect(x(k)-bw/2, yO(v), bw, H-pad.b-yO(v)); }
+
+  g.beginPath(); let st=false;
+  for(let k=0;k<m;k++){ const v=R.pred[b0+k];
+    st ? g.lineTo(x(k),yP(v)) : (g.moveTo(x(k),yP(v)), st=true); }
+  g.strokeStyle = dim; g.lineWidth=2; g.stroke();
+
+  g.font = '400 20px '+css.getPropertyValue('--mono');
+  g.fillStyle = dim;
+  const pl = lq.binP(b0), ph = lq.binP(b1);
+  g.fillText(fmt(pl, pl<10?3:0), pad.l, H-8);
+  const tx = fmt(ph, ph<10?3:0);
+  g.fillText(tx, W-pad.r-g.measureText(tx).width, H-8);
 }
 
 function renderLf(){
@@ -5271,6 +5523,21 @@ function renderLf(){
     : '';
 }
 
+window.addEventListener('pagehide', ()=>{ if(lfOn){ lfTouchCover(); lfSave(true); } });
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState==='hidden' && lfOn){ lfTouchCover(); lfSave(true); }
+});
+
+document.getElementById('lf-acts').addEventListener('click', e=>{
+  if(e.target.id==='lf-val') renderLfVal();
+  if(e.target.id==='lf-wipe'){
+    lfEvents = []; lfCover = []; lfSum = { long:0, short:0, n:0 };
+    try{ localStorage.removeItem(LF_KEY(S.sym)); }catch(err){}
+    document.getElementById('lf-valout').innerHTML = '';
+    renderLf();
+  }
+});
+
 document.getElementById('lf-ctl').addEventListener('click', e=>{
   if(e.target.id!=='lf-on') return;
   lfOn = !lfOn;
@@ -5280,6 +5547,7 @@ document.getElementById('lf-ctl').addEventListener('click', e=>{
   else { lfClose(); lfStatus(0, 'изключено'); }
   renderLf();
 });
+lfLoad(S.sym);
 renderLf();
 
 /* ---------------- симулация на мрежа ---------------- */
