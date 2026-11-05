@@ -745,9 +745,11 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
     <p class="note">Потокът <b>forceOrder</b> на Binance дава принудителните затваряния в момента, в който стават — измерени събития, не модел. Записът се пази на устройството и се трупа между сесиите; помни се и кога връзката е била отворена, за да се различава „нямаше ликвидация" от „не слушахме". Binance пуска най-много по една поръчка на секунда за символ, тоест при каскада виждаш извадка: цените са верни, размерите са занижени.</p>
 
     <div class="controls" id="lf-acts">
+      <button id="lf-pull">Издърпай 24 ч</button>
       <button id="lf-val">Сравни с модела</button>
       <button id="lf-wipe">Изчисти записа</button>
     </div>
+    <div id="lf-pullmsg" class="note" style="margin-top:6px"></div>
     <div id="lf-valout"></div>
   </section>
 
@@ -907,7 +909,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
 </div>
 
 <footer>
-  <span style="font-family:var(--mono);color:var(--ink)">версия 49</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
+  <span style="font-family:var(--mono);color:var(--ink)">версия 50</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
   Фъндингът и откритият интерес идват от публичните API-та на Binance, Bybit, OKX и Hyperliquid.
   Ако някоя борса покаже грешка, най-честата причина е блокиране по регион или ограничение на заявките — изчакай минута и обнови.
 </footer>
@@ -2034,6 +2036,10 @@ function loadTab(tab){
   if(tab==='liq'){
     loadLq().catch(e=>{ document.getElementById('lq-levels').innerHTML =
       `<div class="empty">Няма достъп до данните. Причина: ${e.message||e}</div>`; });
+    // историята се допълва сама при влизане, но не по-често от веднъж на час
+    let last = 0;
+    try{ last = +localStorage.getItem('lf.pull.'+S.sym) || 0; }catch(e){}
+    if(Date.now() - last > 3600000) setTimeout(()=>lfDoPull(true), 1200);
     return;
   }
   if(tab==='vp'){
@@ -5232,10 +5238,79 @@ function lfLoad(sym){
   if(!d || !Array.isArray(d.ev)) return;
   const cut = Date.now() - LF_MAXD*86400000;
   lfEvents = d.ev.filter(e=>e && e.t>cut && isFinite(e.p) && e.p>0)
-                 .map(e=>({ t:e.t, side: e.s ? 'short' : 'long', px:e.p, usd:e.u||0 }))
+                 .map(e=>({ t:e.t, side: e.s ? 'short' : 'long', px:e.p, usd:e.u||0,
+                            id:e.i||null, src: e.c ? 'cm' : 'ws' }))
                  .sort((a,b)=>b.t-a.t);
   lfCover = lfMergeCover((d.cov||[]).filter(c=>c[1]>cut));
   lfEvents.forEach(e=>{ lfSum[e.side] += e.usd; lfSum.n++; });
+}
+
+/* --- издърпване на история от Coin Metrics ---
+   Binance не позволява заявяване на минали ликвидации, тоест през тях живият
+   поток е единственият път. Coin Metrics обаче събират потока вместо нас и
+   безплатният им достъп дава последните 24 часа за всеки пазар. Значи не е
+   нужно телефонът да стои буден: достатъчно е приложението да се отваря
+   веднъж дневно и записът се слепва без дупки. */
+const CM_MKT = sym => `binance-${sym}USDT-future`;
+
+function lfKeyOf(e){ return e.id || (e.t+'|'+e.px+'|'+e.side); }
+
+async function lfPull(){
+  const mkt = CM_MKT(S.sym);
+  const bases = ['https://community-api.coinmetrics.io/v4', 'https://api.coinmetrics.io/v4'];
+  let rows = null, lastErr = null;
+
+  for(const base of bases){
+    try{
+      let url = `${base}/timeseries/market-liquidations?markets=${mkt}&page_size=10000`;
+      const acc = [];
+      for(let page=0; page<5 && url; page++){
+        const r = await fetch(url, {cache:'no-store'});
+        const txt = await r.text();
+        if(!r.ok) throw new Error(`HTTP ${r.status} — ${txt.slice(0,140)}`);
+        const d = JSON.parse(txt);
+        if(Array.isArray(d.data)) acc.push(...d.data);
+        url = d.next_page_url || null;
+      }
+      if(!acc.length) throw new Error('празен отговор');
+      rows = acc; break;
+    }catch(e){ lastErr = e; }
+  }
+  if(!rows) throw new Error(lastErr ? lastErr.message : 'няма достъп');
+
+  // CM дава и заявена, и изпълнена ликвидация за едно и също събитие, с различни
+  // идентификатори. Ако има изпълнени, броим само тях — иначе едно събитие
+  // влиза два пъти.
+  const trades = rows.filter(r=>r.type==='trade');
+  const use = trades.length ? trades : rows;
+
+  const mapped = use.map(r=>{
+    const px = parseFloat(r.price), am = parseFloat(r.amount);
+    const t = Date.parse(r.time);
+    if(!isFinite(px) || !isFinite(am) || !isFinite(t)) return null;
+    // продаваща ликвидационна поръчка затваря дълга позиция
+    const side = String(r.side).toLowerCase()==='sell' ? 'long' : 'short';
+    return { t, side, px, usd: px*am, id: r.coin_metrics_id || null, src:'cm' };
+  }).filter(Boolean);
+  if(!mapped.length) throw new Error('отговорът няма годни редове');
+
+  const seen = new Set(lfEvents.map(lfKeyOf));
+  let added = 0;
+  for(const e of mapped){
+    const k = lfKeyOf(e);
+    if(seen.has(k)) continue;
+    seen.add(k); lfEvents.push(e); added++;
+    lfSum[e.side] += e.usd; lfSum.n++;
+  }
+  lfEvents.sort((a,b)=>b.t-a.t);
+
+  // Покритието се взема от самите редове, а не от поискания прозорец:
+  // по-добре да подцени, отколкото да твърди слушане, което не е станало.
+  const t0 = Math.min(...mapped.map(e=>e.t)), t1 = Math.max(...mapped.map(e=>e.t));
+  lfCover.push([t0, t1]);
+  lfCover = lfMergeCover(lfCover);
+  lfSave(true);
+  return { got: mapped.length, added, t0, t1, kind: trades.length ? 'изпълнени' : 'заявени' };
 }
 
 let lfSaveTimer = null;
@@ -5247,7 +5322,8 @@ function lfSave(now){
   if(ev.length > LF_MAXN) ev = ev.slice(0, LF_MAXN);
   const pack = n => JSON.stringify({
     v:1,
-    ev: ev.slice(0, n).map(e=>({ t:e.t, s: e.side==='short'?1:0, p:+e.px.toFixed(6), u:Math.round(e.usd) })),
+    ev: ev.slice(0, n).map(e=>({ t:e.t, s: e.side==='short'?1:0, p:+e.px.toFixed(6),
+                                 u:Math.round(e.usd), i:e.id||undefined, c:e.src==='cm'?1:undefined })),
     cov: lfCover
   });
   for(const n of [ev.length, 2000, 500]){            // при пълно хранилище режем и опитваме пак
@@ -5308,7 +5384,7 @@ function lfConnect(){
     // SELL поръчка = ликвидиран лонг
     const side = (o.S === 'SELL') ? 'long' : 'short';
     const usd = px*qty;
-    lfEvents.unshift({ t: m.E || Date.now(), side, px, usd });
+    lfEvents.unshift({ t: m.E || Date.now(), side, px, usd, id:null, src:'ws' });
     if(lfEvents.length > 200) lfEvents.length = 200;
     lfSum[side] += usd; lfSum.n++;
     lfTouchCover(); lfSave();
@@ -5505,7 +5581,8 @@ function renderLf(){
   st.innerHTML = lfSum.n
     ? `<div><b class="neg">${usd(lfSum.long)}</b><span>ликвидирани лонгове</span></div>
        <div><b class="pos">${usd(lfSum.short)}</b><span>ликвидирани шортове</span></div>
-       <div><b>${lfSum.n}</b><span>събития от свързването</span></div>
+       <div><b>${lfSum.n}</b><span>записани събития${(()=>{const c=lfEvents.filter(e=>e.src==='cm').length;
+         return c ? ` · ${c} от историята, ${lfEvents.length-c} на живо` : '';})()}</span></div>
        ${tot?`<div><b>${fmt(lfSum.long/tot*100,0)} / ${fmt(lfSum.short/tot*100,0)}</b><span>дял лонг / шорт</span></div>`:''}`
     : `<span style="color:var(--ink-dim);font-size:13px">${lfOn?'Чака събитие. При спокоен пазар може да мине и доста време.':'Изключено.'}</span>`;
 
@@ -5528,12 +5605,40 @@ document.addEventListener('visibilitychange', ()=>{
   if(document.visibilityState==='hidden' && lfOn){ lfTouchCover(); lfSave(true); }
 });
 
+// Издърпва и слепва историята. Може да се вика и автоматично при влизане в
+// таба — затова приема дали да мълчи при неуспех.
+let lfPullBusy = false;
+async function lfDoPull(quiet){
+  if(lfPullBusy) return;
+  const msg = document.getElementById('lf-pullmsg');
+  const btn = document.getElementById('lf-pull');
+  lfPullBusy = true;
+  if(btn){ btn.disabled = true; btn.textContent = 'Тегли…'; }
+  if(msg) msg.textContent = 'Тегли от Coin Metrics…';
+  try{
+    const R = await lfPull();
+    try{ localStorage.setItem('lf.pull.'+S.sym, String(Date.now())); }catch(err){}
+    const h = (R.t1-R.t0)/3600000;
+    if(msg) msg.innerHTML = `Добавени <b>${R.added}</b> нови от ${R.got} ${R.kind} `
+      + `за ${fmt(h,1)} ч · общо в записа <b>${lfEvents.length}</b>.`;
+    renderLf();
+    if(document.getElementById('lfvchart')) renderLfVal();
+  }catch(e){
+    if(msg) msg.innerHTML = quiet ? '' : `<span style="color:var(--hot)">Няма достъп до историята: ${e.message}</span>`;
+  }finally{
+    lfPullBusy = false;
+    if(btn){ btn.disabled = false; btn.textContent = 'Издърпай 24 ч'; }
+  }
+}
+
 document.getElementById('lf-acts').addEventListener('click', e=>{
+  if(e.target.id==='lf-pull') lfDoPull(false);
   if(e.target.id==='lf-val') renderLfVal();
   if(e.target.id==='lf-wipe'){
     lfEvents = []; lfCover = []; lfSum = { long:0, short:0, n:0 };
-    try{ localStorage.removeItem(LF_KEY(S.sym)); }catch(err){}
+    try{ localStorage.removeItem(LF_KEY(S.sym)); localStorage.removeItem('lf.pull.'+S.sym); }catch(err){}
     document.getElementById('lf-valout').innerHTML = '';
+    document.getElementById('lf-pullmsg').innerHTML = '';
     renderLf();
   }
 });
