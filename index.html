@@ -142,6 +142,10 @@ canvas{width:100%;height:290px;display:block;
 #lf-list td{padding:7px 0}
 #lqchart{touch-action:pan-y}
 #lfvchart{height:240px;width:100%;display:block;margin-top:10px}
+.keyrow{display:block;font-size:12px;color:var(--ink-dim);margin-top:8px}
+.keyrow input{display:block;width:100%;margin-top:4px;background:var(--panel);
+  border:1px solid var(--rule);color:var(--ink);border-radius:2px;padding:7px 9px;
+  font-family:var(--mono);font-size:13px}
 #lqchart[data-cur="1"]{touch-action:none}
 #lq-cross{margin:10px 0 4px;min-height:22px}
 #lq-cross .mbox{border-top:0;padding-top:0}
@@ -549,6 +553,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
   <div class="addma" id="etf-key-row">
     <input id="etf-key" type="text" inputmode="text" spellcheck="false" placeholder="bk_… безплатен ключ">
     <button id="etf-key-go">Запази ключ</button>
+    <button id="etf-probe">Провери начините</button>
   </div>
 
   <div id="etf-help"></div>
@@ -745,10 +750,20 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
     <p class="note">Потокът <b>forceOrder</b> на Binance дава принудителните затваряния в момента, в който стават — измерени събития, не модел. Записът се пази на устройството и се трупа между сесиите; помни се и кога връзката е била отворена, за да се различава „нямаше ликвидация" от „не слушахме". Binance пуска най-много по една поръчка на секунда за символ, тоест при каскада виждаш извадка: цените са верни, размерите са занижени.</p>
 
     <div class="controls" id="lf-acts">
-      <button id="lf-pull">Издърпай 24 ч</button>
+      <button id="lf-import">Внеси файл</button>
+      <button id="lf-fetch">Дръпни от адрес</button>
+      <button id="lf-pull">Coin Metrics</button>
       <button id="lf-val">Сравни с модела</button>
       <button id="lf-wipe">Изчисти записа</button>
     </div>
+    <input id="lf-file" type="file" accept=".ndjson,.jsonl,.json,.txt" style="display:none">
+    <label class="keyrow">Адрес на записа
+      <input id="lf-url" type="text" inputmode="url" spellcheck="false"
+             placeholder="https://…/liq-ETH.ndjson — файлът, който събирачът качва">
+    </label>
+    <label class="keyrow">Ключ за Coin Metrics, ако имаш
+      <input id="lf-cmkey" type="text" spellcheck="false" placeholder="незадължителен">
+    </label>
     <div id="lf-pullmsg" class="note" style="margin-top:6px"></div>
     <div id="lf-valout"></div>
   </section>
@@ -909,7 +924,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
 </div>
 
 <footer>
-  <span style="font-family:var(--mono);color:var(--ink)">версия 50</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
+  <span style="font-family:var(--mono);color:var(--ink)">версия 53</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
   Фъндингът и откритият интерес идват от публичните API-та на Binance, Bybit, OKX и Hyperliquid.
   Ако някоя борса покаже грешка, най-честата причина е блокиране по регион или ограничение на заявките — изчакай минута и обнови.
 </footer>
@@ -2037,9 +2052,14 @@ function loadTab(tab){
     loadLq().catch(e=>{ document.getElementById('lq-levels').innerHTML =
       `<div class="empty">Няма достъп до данните. Причина: ${e.message||e}</div>`; });
     // историята се допълва сама при влизане, но не по-често от веднъж на час
-    let last = 0;
-    try{ last = +localStorage.getItem('lf.pull.'+S.sym) || 0; }catch(e){}
-    if(Date.now() - last > 3600000) setTimeout(()=>lfDoPull(true), 1200);
+    let hasUrl = '', lastU = 0, last = 0;
+    try{
+      hasUrl = (localStorage.getItem('lf.url')||'').trim();
+      lastU  = +localStorage.getItem('lf.urlpull.'+S.sym) || 0;
+      last   = +localStorage.getItem('lf.pull.'+S.sym) || 0;
+    }catch(e){}
+    if(hasUrl && Date.now()-lastU > 600000) setTimeout(()=>lfFetchUrl(true), 1000);
+    else if(!hasUrl && Date.now()-last > 3600000) setTimeout(()=>lfDoPull(true), 1200);
     return;
   }
   if(tab==='vp'){
@@ -3121,11 +3141,110 @@ function keyHelp(){
     Ключът се пази само в този браузър и не напуска устройството ти.</div>`;
 }
 
+/* Начини за подаване на ключа. Не знам кой иска наборът, затова се пробват
+   всички и се запомня работещият.
+   Важното разделение: хедърите Authorization и X-API-Key правят заявката
+   „сложна" и браузърът първо праща OPTIONS за разрешение. Ако сървърът не
+   отговори на нея както трябва, заявката пада още там — с мрежова грешка, не
+   с 401, тоест ключът изобщо не е стигнал дотам. Ключ в адреса не минава
+   през такава проверка. */
+const ETF_STYLES = [
+  { id:'bearer',  name:'Authorization: Bearer', pre:true,
+    make:(u,k)=>[u, { headers:{ 'Authorization':'Bearer '+k } }] },
+  { id:'xapikey', name:'X-API-Key хедър', pre:true,
+    make:(u,k)=>[u, { headers:{ 'X-API-Key':k } }] },
+  { id:'apikey',  name:'apikey хедър', pre:true,
+    make:(u,k)=>[u, { headers:{ 'apikey':k } }] },
+  { id:'q_api_key', name:'?api_key= в адреса', pre:false,
+    make:(u,k)=>[u+(u.includes('?')?'&':'?')+'api_key='+encodeURIComponent(k), undefined] },
+  { id:'q_key',   name:'?key= в адреса', pre:false,
+    make:(u,k)=>[u+(u.includes('?')?'&':'?')+'key='+encodeURIComponent(k), undefined] },
+  { id:'q_token', name:'?token= в адреса', pre:false,
+    make:(u,k)=>[u+(u.includes('?')?'&':'?')+'token='+encodeURIComponent(k), undefined] },
+  { id:'none',    name:'без ключ', pre:false, make:u=>[u, undefined] },
+];
+const ETF_STYLE_KEY = 'bk_etf_style';
+const getStyle = () => { try{ return localStorage.getItem(ETF_STYLE_KEY) || ''; }catch(e){ return ''; } };
+
 async function etfFetch(url){
   const key = getKey();
-  const r = await fetch(url, key ? { headers:{ 'Authorization':'Bearer '+key } } : undefined);
+  if(!key){
+    const r = await fetch(url);
+    if(!r.ok){ const e = new Error('HTTP '+r.status); e.status = r.status; throw e; }
+    return r.json();
+  }
+  const want = getStyle();
+  const st = ETF_STYLES.find(x=>x.id===want) || ETF_STYLES[0];
+  const [u, opt] = st.make(url, key);
+  const r = await fetch(u, opt);
   if(!r.ok){ const e = new Error('HTTP '+r.status); e.status = r.status; throw e; }
   return r.json();
+}
+
+/* Пробва всички съчетания адрес × начин и казва какво точно е върнало всяко.
+   Целта е да се види разликата между „ключът е отхвърлен" (HTTP 401) и
+   „браузърът не пусна заявката" (мрежова грешка от CORS). */
+async function etfProbe(){
+  const box = document.getElementById('etf-stats');
+  const help = document.getElementById('etf-help');
+  const key = getKey();
+  if(!key){ box.innerHTML = '<span style="color:var(--hot);font-size:13px">Първо запази ключ.</span>'; return; }
+
+  const urls = [
+    'https://bykaranteli.com/api/v1/public/datasets/etf-flows.json',
+    'https://bykaranteli.com/api/public/datasets/etf-flows.json',
+  ];
+  box.innerHTML = '<span style="color:var(--ink-dim);font-size:13px">Пробва всички начини…</span>';
+  const rows = [];
+  let win = null;
+
+  for(const u of urls){
+    for(const st of ETF_STYLES){
+      const [uu, opt] = st.make(u, key);
+      let res;
+      try{
+        const r = await fetch(uu, opt);
+        if(r.ok){
+          let n = '';
+          try{ const d = await r.json(); n = Array.isArray(d) ? ` · ${d.length} реда`
+               : (d && Array.isArray(d.data) ? ` · ${d.data.length} реда` : ''); }catch(e){}
+          res = { ok:true, txt:`минава${n}` };
+          if(!win) win = { url:u, style:st.id };
+        } else {
+          res = { ok:false, txt:`HTTP ${r.status}` };
+        }
+      }catch(e){
+        // браузърът не прави разлика коя точно е причината, за да не издава
+        // чужди сървъри — но мрежова грешка тук на практика значи CORS
+        res = { ok:false, txt:`блокирана (${e.message||'мрежова грешка'})${st.pre?' — вероятно заради предварителната проверка':''}` };
+      }
+      rows.push({ u, st, res });
+    }
+  }
+
+  if(win){
+    try{ localStorage.setItem(ETF_STYLE_KEY, win.style); }catch(e){}
+  }
+  const name = id => (ETF_STYLES.find(x=>x.id===id)||{}).name || id;
+  const report = `<div class="keyhelp">
+    <b>Какво върна всеки начин</b>
+    <ul style="margin:6px 0 0;padding-left:18px;line-height:1.7">
+      ${rows.map(r=>`<li><span style="color:${r.res.ok?'var(--short)':'var(--ink-dim)'}">${r.res.txt}</span>
+         — ${r.st.name} <span style="opacity:.6">· ${r.u.replace('https://bykaranteli.com','')}</span></li>`).join('')}
+    </ul>
+    ${win ? `<p style="margin-top:10px">Работи <b>${name(win.style)}</b>. Запомнено е и се ползва оттук нататък.</p>`
+          : `<p style="margin-top:10px">Нито един начин не мина. Ако навсякъде пише „блокирана", проблемът не е ключът, а че наборът не допуска заявки от чужда страница — тогава трябва да мине през сървъра ти. Ако пише HTTP 401, ключът е отхвърлен.</p>`}
+  </div>`;
+  help.innerHTML = report;
+
+  if(win){
+    etf = null;
+    // loadEtf чисти полето с обяснението, затова докладът се връща след него
+    try{ await loadEtf(); }catch(e){}
+    help.innerHTML = report;
+  } else {
+    box.innerHTML = '<span style="color:var(--hot);font-size:13px">Нито един начин не проработи — виж списъка отдолу.</span>';
+  }
 }
 
 async function loadEtf(){
@@ -3291,11 +3410,47 @@ async function ensureEtfPx(asset){
   }catch(e){ /* графиката остава без цена */ }
 }
 
+// Чисти боклука, който идва при копиране: интервали, кавички, думата Bearer,
+// запетаи и разделители. Опашка от знаци „=" също отпада — ключът е base64url
+// от 32 байта, тоест 43 знака, а в base64 допълването е най-много два знака,
+// така че шест поред никога не са част от ключа.
+function etfCleanKey(raw){
+  let v = String(raw).trim()
+    .replace(/^["'`]+|["'`]+$/g, '')
+    .replace(/^Bearer\s+/i, '')
+    .replace(/[\s,;]+$/, '')
+    .replace(/=+$/, '');
+  const m = v.match(/\bbk_[A-Za-z0-9_-]+/);   // взима ключа и ако е в изречение
+  if(m) v = m[0];
+  return v;
+}
+
+function etfKeyLooksOk(v){
+  if(!v.startsWith('bk_')) return 'ключът трябва да започва с bk_';
+  const body = v.slice(3);
+  if(!/^[A-Za-z0-9_-]+$/.test(body)) return 'има знаци, които не се срещат в такъв ключ';
+  if(body.length < 20) return `тялото е само ${body.length} знака — изглежда отрязано`;
+  return null;
+}
+
+document.getElementById('etf-probe').addEventListener('click', ()=>{ etfProbe(); });
+
 document.getElementById('etf-key-go').addEventListener('click', ()=>{
   const el = document.getElementById('etf-key');
-  const v = el.value.trim();
-  try{ v ? localStorage.setItem(ETF_KEY, v) : localStorage.removeItem(ETF_KEY); }catch(e){}
+  const box = document.getElementById('etf-stats');
+  const v = etfCleanKey(el.value);
+  if(!v){
+    try{ localStorage.removeItem(ETF_KEY); }catch(e){}
+    el.value=''; el.blur(); etf = null; loadEtf(); return;
+  }
+  const bad = etfKeyLooksOk(v);
+  if(bad){
+    if(box) box.innerHTML = `<span style="color:var(--hot);font-size:13px">Ключът не изглежда редовен: ${bad}. Не е записан.</span>`;
+    return;
+  }
+  try{ localStorage.setItem(ETF_KEY, v); }catch(e){}
   el.value=''; el.blur();
+  if(box) box.innerHTML = `<span style="color:var(--ink-dim);font-size:13px">Ключът е записан (${v.length} знака). Зарежда…</span>`;
   etf = null; loadEtf();
 });
 
@@ -5262,7 +5417,10 @@ async function lfPull(){
 
   for(const base of bases){
     try{
-      let url = `${base}/timeseries/market-liquidations?markets=${mkt}&page_size=10000`;
+      let key = '';
+      try{ key = (localStorage.getItem('lf.cmkey')||'').trim(); }catch(e){}
+      let url = `${base}/timeseries/market-liquidations?markets=${mkt}&page_size=10000`
+              + (key ? `&api_key=${encodeURIComponent(key)}` : '');
       const acc = [];
       for(let page=0; page<5 && url; page++){
         const r = await fetch(url, {cache:'no-store'});
@@ -5581,8 +5739,11 @@ function renderLf(){
   st.innerHTML = lfSum.n
     ? `<div><b class="neg">${usd(lfSum.long)}</b><span>ликвидирани лонгове</span></div>
        <div><b class="pos">${usd(lfSum.short)}</b><span>ликвидирани шортове</span></div>
-       <div><b>${lfSum.n}</b><span>записани събития${(()=>{const c=lfEvents.filter(e=>e.src==='cm').length;
-         return c ? ` · ${c} от историята, ${lfEvents.length-c} на живо` : '';})()}</span></div>
+       <div><b>${lfSum.n}</b><span>записани събития${(()=>{
+         const n={}; lfEvents.forEach(e=>{ n[e.src||'ws']=(n[e.src||'ws']||0)+1; });
+         const names={ws:'на живо', cm:'Coin Metrics', file:'от събирача'};
+         const parts=Object.keys(n).map(k=>`${n[k]} ${names[k]||k}`);
+         return parts.length>1 ? ' · '+parts.join(', ') : '';})()}</span></div>
        ${tot?`<div><b>${fmt(lfSum.long/tot*100,0)} / ${fmt(lfSum.short/tot*100,0)}</b><span>дял лонг / шорт</span></div>`:''}`
     : `<span style="color:var(--ink-dim);font-size:13px">${lfOn?'Чака събитие. При спокоен пазар може да мине и доста време.':'Изключено.'}</span>`;
 
@@ -5605,6 +5766,72 @@ document.addEventListener('visibilitychange', ()=>{
   if(document.visibilityState==='hidden' && lfOn){ lfTouchCover(); lfSave(true); }
 });
 
+/* --- внасяне от файл или адрес ---
+   Форматът е по един JSON обект на ред (NDJSON): или събитие, или интервал на
+   слушане. Събирачът пише точно това. Приемат се и двата правописа на полетата,
+   за да не се чупи, ако файлът е правен на ръка. */
+function lfIngest(text){
+  let lines;
+  const trimmed = String(text).trim();
+  if(trimmed.startsWith('[')){
+    try{ lines = JSON.parse(trimmed); }catch(e){ throw new Error('не е валиден JSON масив'); }
+  } else {
+    lines = trimmed.split(/\r?\n/).filter(l=>l.trim()).map(l=>{
+      try{ return JSON.parse(l); }catch(e){ return null; }
+    }).filter(Boolean);
+  }
+  if(!lines.length) throw new Error('няма годни редове');
+
+  const seen = new Set(lfEvents.map(lfKeyOf));
+  let added = 0, got = 0, covN = 0;
+  for(const r of lines){
+    if(r && Array.isArray(r.cov) && r.cov.length===2 &&
+       isFinite(r.cov[0]) && isFinite(r.cov[1])){
+      lfCover.push([+r.cov[0], +r.cov[1]]); covN++; continue;
+    }
+    const t  = +(r.t ?? r.time);
+    const px = +(r.p ?? r.px ?? r.price);
+    const u  = +(r.u ?? r.usd ?? 0);
+    let side = r.s ?? r.side;
+    if(side===0 || side==='0') side='long';
+    if(side===1 || side==='1') side='short';
+    side = String(side).toLowerCase();
+    if(side!=='long' && side!=='short') continue;
+    if(!isFinite(t) || !isFinite(px) || px<=0) continue;
+    got++;
+    const e = { t, side, px, usd: isFinite(u)?u:0, id: r.id || r.i || null, src:'file' };
+    const k = lfKeyOf(e);
+    if(seen.has(k)) continue;
+    seen.add(k); lfEvents.push(e); added++;
+    lfSum[side] += e.usd; lfSum.n++;
+  }
+  lfEvents.sort((a,b)=>b.t-a.t);
+  lfCover = lfMergeCover(lfCover);
+  lfSave(true);
+  return { added, got, covN };
+}
+
+function lfMsg(html){ const m=document.getElementById('lf-pullmsg'); if(m) m.innerHTML = html; }
+
+async function lfFetchUrl(quiet){
+  let url = '';
+  try{ url = (localStorage.getItem('lf.url')||'').trim(); }catch(e){}
+  if(!url){ if(!quiet) lfMsg('<span style="color:var(--hot)">Няма въведен адрес.</span>'); return; }
+  try{
+    lfMsg('Тегли от адреса…');
+    const r = await fetch(url, {cache:'no-store'});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const R = lfIngest(await r.text());
+    try{ localStorage.setItem('lf.urlpull.'+S.sym, String(Date.now())); }catch(e){}
+    lfMsg(`От адреса: добавени <b>${R.added}</b> нови от ${R.got} събития`
+        + `${R.covN?`, ${R.covN} интервала на слушане`:''} · общо <b>${lfEvents.length}</b>.`);
+    renderLf();
+    if(document.getElementById('lfvchart')) renderLfVal();
+  }catch(e){
+    if(!quiet) lfMsg(`<span style="color:var(--hot)">Адресът не се чете: ${e.message}</span>`);
+  }
+}
+
 // Издърпва и слепва историята. Може да се вика и автоматично при влизане в
 // таба — затова приема дали да мълчи при неуспех.
 let lfPullBusy = false;
@@ -5624,14 +5851,38 @@ async function lfDoPull(quiet){
     renderLf();
     if(document.getElementById('lfvchart')) renderLfVal();
   }catch(e){
-    if(msg) msg.innerHTML = quiet ? '' : `<span style="color:var(--hot)">Няма достъп до историята: ${e.message}</span>`;
+    const noKey = /401|403|unauthor/i.test(e.message);
+    if(msg) msg.innerHTML = quiet ? '' :
+      `<span style="color:var(--hot)">Coin Metrics: ${e.message}</span>`
+      + (noKey ? '<br>Безплатният достъп без ключ не включва ликвидации — само мрежовите метрики. Ползвай събирача и „Внеси файл“ или „Дръпни от адрес“.' : '');
   }finally{
     lfPullBusy = false;
     if(btn){ btn.disabled = false; btn.textContent = 'Издърпай 24 ч'; }
   }
 }
 
+document.getElementById('lf-file').addEventListener('change', async e=>{
+  const f = e.target.files && e.target.files[0]; if(!f) return;
+  try{
+    const R = lfIngest(await f.text());
+    lfMsg(`От файла: добавени <b>${R.added}</b> нови от ${R.got} събития`
+        + `${R.covN?`, ${R.covN} интервала на слушане`:''} · общо <b>${lfEvents.length}</b>.`);
+    renderLf();
+    if(document.getElementById('lfvchart')) renderLfVal();
+  }catch(err){ lfMsg(`<span style="color:var(--hot)">Файлът не се чете: ${err.message}</span>`); }
+  e.target.value = '';
+});
+
+['lf-url','lf-cmkey'].forEach(id=>{
+  const el = document.getElementById(id), k = id==='lf-url' ? 'lf.url' : 'lf.cmkey';
+  if(!el) return;
+  try{ el.value = localStorage.getItem(k) || ''; }catch(e){}
+  el.addEventListener('change', ()=>{ try{ localStorage.setItem(k, el.value.trim()); }catch(e){} });
+});
+
 document.getElementById('lf-acts').addEventListener('click', e=>{
+  if(e.target.id==='lf-import') document.getElementById('lf-file').click();
+  if(e.target.id==='lf-fetch') lfFetchUrl(false);
   if(e.target.id==='lf-pull') lfDoPull(false);
   if(e.target.id==='lf-val') renderLfVal();
   if(e.target.id==='lf-wipe'){
