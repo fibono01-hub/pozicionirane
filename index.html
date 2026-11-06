@@ -553,7 +553,12 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
   <div class="controls" id="etf-src">
     <button data-es="tftc" aria-pressed="true">TFTC · без ключ</button>
     <button data-es="bk" aria-pressed="false">ByKaranteli · с ключ</button>
+    <button data-es="url" aria-pressed="false">Собствен адрес</button>
   </div>
+  <label class="keyrow" id="etf-url-row" style="display:none">Адрес на JSON с дневните потоци
+    <input id="etf-url" type="text" inputmode="url" spellcheck="false"
+           placeholder="https://…/etf-flows.json">
+  </label>
   <div class="addma" id="etf-key-row">
     <input id="etf-key" type="text" inputmode="text" spellcheck="false" placeholder="bk_… безплатен ключ">
     <button id="etf-key-go">Запази ключ</button>
@@ -928,7 +933,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
 </div>
 
 <footer>
-  <span style="font-family:var(--mono);color:var(--ink)">версия 54</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
+  <span style="font-family:var(--mono);color:var(--ink)">версия 55</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
   Фъндингът и откритият интерес идват от публичните API-та на Binance, Bybit, OKX и Hyperliquid.
   Ако някоя борса покаже грешка, най-честата причина е блокиране по регион или ограничение на заявките — изчакай минута и обнови.
 </footer>
@@ -3262,13 +3267,19 @@ async function loadEtf(){
   // TFTC публикуват дневния запис като отворен JSON без ключ (CC BY 4.0).
   // Поставен е пръв, защото ByKaranteli иска ключ в хедър, а хедър не стига
   // дотам от страница в браузъра — предварителната проверка го спира.
-  const urls = S.etfSrc === 'bk' ? [
+  const own = (()=>{ try{ return (localStorage.getItem('etf.url')||'').trim(); }catch(e){ return ''; } })();
+  const urls = S.etfSrc === 'url' ? (own ? [own] : [])
+    : S.etfSrc === 'bk' ? [
     'https://bykaranteli.com/api/v1/public/datasets/etf-flows.json',
     'https://bykaranteli.com/api/public/datasets/etf-flows.json',
   ] : [
     'https://www.tftc.io/bitcoin-etf-flows/data.json',
     'https://www.tftc.io/bitcoin-etf-flows/latest.json',
   ];
+  if(!urls.length){
+    box.innerHTML = '<span style="color:var(--ink-dim);font-size:13px">Въведи адрес в полето отгоре.</span>';
+    return;
+  }
   let raw = null, err = null;
   for(const u of urls){
     try{ raw = await etfFetch(u); break; }catch(e){ err = e; }
@@ -3276,8 +3287,15 @@ async function loadEtf(){
 
   if(!raw){
     const needsKey = err && (err.status===401 || err.status===403);
+    // Липсата на статус значи, че браузърът изобщо не е показал отговора —
+    // на практика сървърът не праща разрешение за чужд произход.
+    const blocked = err && err.status === undefined;
     box.innerHTML = needsKey && !getKey()
       ? '<span style="color:var(--hot);font-size:13px">Наборът иска безплатен ключ.</span>'
+      : blocked
+      ? `<span style="color:var(--hot);font-size:13px">Браузърът не пусна заявката (${err.message}).`
+        + ` Този сървър не разрешава четене от чужда страница — ключ или настройка няма да помогнат.`
+        + ` Трябва адрес от твоя произход.</span>`
       : `<span style="color:var(--hot);font-size:13px">Няма достъп до набора. Причина: ${err?err.message:'неизвестна'}${getKey()&&needsKey?' — ключът може да е грешен или неактивен.':''}</span>`;
     if(help && needsKey) help.innerHTML = keyHelp();
     document.getElementById('etf-table').innerHTML='';
@@ -3485,13 +3503,23 @@ document.getElementById('etf-src').addEventListener('click', e=>{
   S.etfSrc = b.dataset.es;
   document.querySelectorAll('#etf-src button').forEach(x=>x.setAttribute('aria-pressed', x===b));
   document.getElementById('etf-key-row').style.display = S.etfSrc==='bk' ? '' : 'none';
+  document.getElementById('etf-url-row').style.display = S.etfSrc==='url' ? '' : 'none';
   const cr = document.getElementById('etf-credit');
   if(cr) cr.innerHTML = S.etfSrc==='bk'
     ? '<a href="https://bykaranteli.com/etf" style="color:var(--short)">ByKaranteli</a>'
+    : S.etfSrc==='url' ? 'собствен адрес'
     : '<a href="https://www.tftc.io/bitcoin-etf-flows" style="color:var(--short)">TFTC</a>, CC BY 4.0';
   etf = null; loadEtf();
 });
 document.getElementById('etf-key-row').style.display = 'none';
+(function(){
+  const el = document.getElementById('etf-url');
+  try{ el.value = localStorage.getItem('etf.url') || ''; }catch(e){}
+  el.addEventListener('change', ()=>{
+    try{ localStorage.setItem('etf.url', el.value.trim()); }catch(e){}
+    if(S.etfSrc==='url'){ etf = null; loadEtf(); }
+  });
+})();
 
 document.getElementById('etf-probe').addEventListener('click', ()=>{ etfProbe(); });
 
