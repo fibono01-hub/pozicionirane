@@ -550,6 +550,10 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
 
   <section>
     <h2>Дневни потоци на ETF-ите</h2>
+  <div class="controls" id="etf-src">
+    <button data-es="tftc" aria-pressed="true">TFTC · без ключ</button>
+    <button data-es="bk" aria-pressed="false">ByKaranteli · с ключ</button>
+  </div>
   <div class="addma" id="etf-key-row">
     <input id="etf-key" type="text" inputmode="text" spellcheck="false" placeholder="bk_… безплатен ключ">
     <button id="etf-key-go">Запази ключ</button>
@@ -585,7 +589,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
     предварителен, докато емитентите не приключат сетълмента.
   </p>
   <p style="font-size:12px;color:var(--ink-dim);max-width:60ch">
-    Данни за потоците: <a href="https://bykaranteli.com/etf" style="color:var(--short)">ByKaranteli</a>,
+    Данни за потоците: <span id="etf-credit"><a href="https://www.tftc.io/bitcoin-etf-flows" style="color:var(--short)">TFTC</a>, CC BY 4.0</span>,
     безплатен набор за лична и изследователска употреба. Премията се смята тук от публичните цени на Coinbase и Binance.
   </p>
   </section>
@@ -924,7 +928,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
 </div>
 
 <footer>
-  <span style="font-family:var(--mono);color:var(--ink)">версия 53</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
+  <span style="font-family:var(--mono);color:var(--ink)">версия 54</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
   Фъндингът и откритият интерес идват от публичните API-та на Binance, Bybit, OKX и Hyperliquid.
   Ако някоя борса покаже грешка, най-честата причина е блокиране по регион или ограничение на заявките — изчакай минута и обнови.
 </footer>
@@ -3102,6 +3106,8 @@ function drawCbp(){
 
 /* ---------------- ETF потоци ---------------- */
 let etf = null, etfPx = {};
+let etfScale = 1;      // 1e6, ако източникът дава милиони
+S.etfSrc = 'tftc';     // по подразбиране източникът без ключ
 S.etfAsset = 'BTC';
 S.etfRange = 90;
 
@@ -3253,9 +3259,15 @@ async function loadEtf(){
   box.innerHTML = '<span style="color:var(--ink-dim);font-size:13px">Зарежда…</span>';
   if(help) help.innerHTML = '';
 
-  const urls = [
+  // TFTC публикуват дневния запис като отворен JSON без ключ (CC BY 4.0).
+  // Поставен е пръв, защото ByKaranteli иска ключ в хедър, а хедър не стига
+  // дотам от страница в браузъра — предварителната проверка го спира.
+  const urls = S.etfSrc === 'bk' ? [
     'https://bykaranteli.com/api/v1/public/datasets/etf-flows.json',
     'https://bykaranteli.com/api/public/datasets/etf-flows.json',
+  ] : [
+    'https://www.tftc.io/bitcoin-etf-flows/data.json',
+    'https://www.tftc.io/bitcoin-etf-flows/latest.json',
   ];
   let raw = null, err = null;
   for(const u of urls){
@@ -3285,7 +3297,18 @@ async function loadEtf(){
       if(!ds) return;
       const t = new Date(ds).getTime();
       if(!isFinite(t)) return;
-      const flow = pick(r,'netinflow','netflow','flow','inflow');
+      let flow = pick(r,'netinflow','netflow','flow','inflow',
+                        'total','totalnetflow','totalnetflowm','net','netflowusd','netflowusdm');
+      // Някои записи дават само отделните фондове без обща сума — тогава се сумира
+      if(flow===null){
+        let sum = null;
+        for(const k of Object.keys(r)){
+          if(!/^flow/i.test(k)) continue;
+          const v = parseFloat(r[k]);
+          if(isFinite(v)) sum = (sum||0) + v;
+        }
+        flow = sum;
+      }
       if(flow===null) return;
       (byAsset[a] = byAsset[a] || []).push({
         t, ds: ds.slice(0,10), flow,
@@ -3295,12 +3318,36 @@ async function loadEtf(){
       });
     });
     Object.values(byAsset).forEach(v=>v.sort((x,y)=>x.t-y.t));
+
+    // Някои източници дават милиони, други долари. Ако типичният дневен поток е
+    // под сто хиляди, числата почти сигурно са в милиони — дневен поток от
+    // 74 долара няма смисъл, 74 милиона има. Мащабът се отбелязва в надписа,
+    // за да се вижда, че е предположение, а не измерено.
+    etfScale = 1;
+    const all = Object.values(byAsset).flat().map(x=>Math.abs(x.flow)).filter(v=>v>0);
+    if(all.length > 5){
+      all.sort((a,b)=>a-b);
+      const med = all[Math.floor(all.length/2)];
+      if(med < 1e5){
+        etfScale = 1e6;
+        Object.values(byAsset).forEach(v=>v.forEach(x=>{
+          x.flow *= 1e6;
+          if(x.cum!=null) x.cum *= 1e6;
+        }));
+      }
+    }
     etf = byAsset;
     const row = document.getElementById('etf-key-row');
     if(row && getKey()) row.dataset.ok = '1';
     drawEtf();
   }catch(e){
+    let peek = '';
+    try{ peek = JSON.stringify(Array.isArray(raw)?raw[0]:raw).slice(0,400); }catch(x){}
     box.innerHTML = `<span style="color:var(--hot);font-size:13px">Наборът дойде, но не можах да го разчета: ${e.message}</span>`;
+    const help = document.getElementById('etf-help');
+    if(help && peek) help.innerHTML = `<div class="keyhelp">Ето началото на отговора, за да се види формата:
+      <pre style="white-space:pre-wrap;word-break:break-all;font-size:11px;margin-top:6px">${
+        peek.replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))}</pre></div>`;
   }
 }
 
@@ -3432,6 +3479,19 @@ function etfKeyLooksOk(v){
   if(body.length < 20) return `тялото е само ${body.length} знака — изглежда отрязано`;
   return null;
 }
+
+document.getElementById('etf-src').addEventListener('click', e=>{
+  const b = e.target.closest('button[data-es]'); if(!b) return;
+  S.etfSrc = b.dataset.es;
+  document.querySelectorAll('#etf-src button').forEach(x=>x.setAttribute('aria-pressed', x===b));
+  document.getElementById('etf-key-row').style.display = S.etfSrc==='bk' ? '' : 'none';
+  const cr = document.getElementById('etf-credit');
+  if(cr) cr.innerHTML = S.etfSrc==='bk'
+    ? '<a href="https://bykaranteli.com/etf" style="color:var(--short)">ByKaranteli</a>'
+    : '<a href="https://www.tftc.io/bitcoin-etf-flows" style="color:var(--short)">TFTC</a>, CC BY 4.0';
+  etf = null; loadEtf();
+});
+document.getElementById('etf-key-row').style.display = 'none';
 
 document.getElementById('etf-probe').addEventListener('click', ()=>{ etfProbe(); });
 
