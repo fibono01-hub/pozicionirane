@@ -709,7 +709,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
 
   <div id="lq-secwrap">
     <h2 style="margin-top:26px">Разрез сега</h2>
-    <p class="note" style="margin-top:-6px">Последната колона на картата, обърната настрани: колко се помита, ако цената стигне дотам.</p>
+    <p class="note" style="margin-top:-6px" id="lq-secnote"></p>
     <div class="controls" id="lq-span">
       <button data-ls="0.10">±10%</button>
       <button data-ls="0.25" aria-pressed="true">±25%</button>
@@ -938,7 +938,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
 </div>
 
 <footer>
-  <span style="font-family:var(--mono);color:var(--ink)">версия 56</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
+  <span style="font-family:var(--mono);color:var(--ink)">версия 57</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
   Фъндингът и откритият интерес идват от публичните API-та на Binance, Bybit, OKX и Hyperliquid.
   Ако някоя борса покаже грешка, най-честата причина е блокиране по регион или ограничение на заявките — изчакай минута и обнови.
 </footer>
@@ -4741,6 +4741,8 @@ function drawLq(){
   }
 
   if(secW) drawLqPanel(g, G, css);
+  // разрезът отдолу чете същия срез, значи се обновява заедно с маркера
+  if(document.getElementById('lqsec')) drawLqSec();
 
   renderLqCross();
   renderLqSide();
@@ -4758,7 +4760,8 @@ function drawLqPanel(g, G, css){
   const x0 = W-secW+12, x1 = W-10, inner = x1-x0;
   if(inner < 30) return;
 
-  const L = lq.lastL, S_ = lq.lastS;
+  const SL = lqSlice();
+  const L = SL.L, S_ = SL.S;
   const dim   = css.getPropertyValue('--ink-dim').trim();
   const rule  = css.getPropertyValue('--rule').trim();
   const ink   = css.getPropertyValue('--ink').trim();
@@ -4771,7 +4774,7 @@ function drawLqPanel(g, G, css){
   g.strokeStyle = rule; g.lineWidth = 1;
   g.beginPath(); g.moveTo(x0-6, pad.t); g.lineTo(x0-6, H-pad.b); g.stroke();
 
-  const pc = lq.c[lq.c.length-1];
+  const pc = SL.p;
   const bc = Math.max(b0, Math.min(b1, lq.bin(pc)));
   const yc = y(pc);
 
@@ -4836,6 +4839,13 @@ function drawLqPanel(g, G, css){
     };
     put(usd(totU), SHORT, Math.max(pad.t+16, yc-14));
     put(usd(totD), LONG,  Math.min(H-pad.b-6, yc+28));
+  }
+  // при маркер се казва кой момент се чете, за да не мине за текущ
+  if(!SL.live){
+    g.font = '500 17px '+css.getPropertyValue('--num');
+    g.fillStyle = css.getPropertyValue('--hot').trim();
+    const tag = 'маркер · '+lqSliceWhen(SL);
+    g.fillText(tag, x1-g.measureText(tag).width, H-pad.b+18);
   }
 
 }
@@ -5036,10 +5046,31 @@ function renderLqCross(){
 S.lqSpan = 0.25;
 let secMark = null;
 
+/* Кой разрез се показва. При включен маркер — колоната и цената под него,
+   тоест „ако бях там, в онзи момент". Иначе последната колона и текущата цена.
+   Двата разреза, отстрани и отдолу, четат оттук, за да не се разминават. */
+function lqSlice(){
+  const n = lq.grid.length;
+  if(lqMark && S.lqCur){
+    const i = Math.max(0, Math.min(n-1, lqMark.i));
+    const p = Math.max(lq.pLo, Math.min(lq.pHi, lqMark.p));
+    return { i, p, L: lq.gridL[i], S: lq.gridS[i], t: lq.t[i], live:false };
+  }
+  return { i:n-1, p: lq.c[n-1], L: lq.lastL, S: lq.lastS, t: lq.t[n-1], live:true };
+}
+
+// часът на показаната колона, за надписите
+function lqSliceWhen(sl){
+  const q = new Date(sl.t);
+  return S.lqInt==='1d'
+    ? q.getDate()+'.'+(q.getMonth()+1)+'.'+String(q.getFullYear()).slice(2)
+    : q.getDate()+'.'+(q.getMonth()+1)+' '+String(q.getHours()).padStart(2,'0')+':00';
+}
+
 function lqSecGeom(){
   const cv = document.getElementById('lqsec');
   const W=cv.width, H=cv.height, pad={l:76,r:84,t:16,b:30};
-  const px = lq.c[lq.c.length-1];
+  const px = lqSlice().p;          // обхватът се центрира около показаната цена
   let b0, b1;
   if(S.lqSpan==='all'){ b0=0; b1=LQ_NB-1; }
   else {
@@ -5058,7 +5089,16 @@ function drawLqSec(){
   const cv = document.getElementById('lqsec'), g = cv.getContext('2d');
   g.clearRect(0,0,cv.width,cv.height);
   const read = document.getElementById('lq-secread');
-  if(!lq || !lq.grid){ read.innerHTML=''; return; }
+  const note = document.getElementById('lq-secnote');
+  if(!lq || !lq.grid){ read.innerHTML=''; if(note) note.innerHTML=''; return; }
+  if(note){
+    const sl = lqSlice();
+    note.innerHTML = sl.live
+      ? 'Последната колона на картата, обърната настрани: колко се помита, ако цената стигне дотам.'
+      : `<b style="color:var(--hot)">Води маркерът:</b> колоната от ${lqSliceWhen(sl)} и цената `
+        + `<b>${axPrice(sl.p)}</b> под него. Натрупването тръгва оттам, не от текущата цена. `
+        + `Изключи маркера, за да се върнеш към сегашното състояние.`;
+  }
   const G = lqSecGeom();
   const {W,H,pad,px,b0,b1,nb,PW,PH,x} = G;
 
@@ -5067,7 +5107,8 @@ function drawLqSec(){
   const ink=css.getPropertyValue('--ink').trim();
   const A=css.getPropertyValue('--long').trim(), T=css.getPropertyValue('--short').trim();
 
-  const L = lq.lastL, Sh = lq.lastS;
+  const SL = lqSlice();
+  const L = SL.L, Sh = SL.S;
   // мащабът на стълбчетата идва само от видимия отрез
   let mx = 0;
   for(let b=b0;b<=b1;b++) mx = Math.max(mx, L[b]+Sh[b]);
