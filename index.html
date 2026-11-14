@@ -11,7 +11,7 @@
 <meta name="theme-color" content="#151A2B">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root{
   --ground:#151A2B;
@@ -27,6 +27,10 @@
   --down:#E0A03C;
   --sans:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
   --mono:'IBM Plex Mono',ui-monospace,'SF Mono',Menlo,monospace;
+  /* Цифрите по осите: Inter е с еднакво широки цифри по подразбиране,
+     значи колоната не трепти, а формата е по-близо до четимите табла,
+     отколкото моноширинният шрифт. Таблиците и отчитанията остават на --mono. */
+  --num:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html{-webkit-text-size-adjust:100%}
@@ -690,6 +694,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
     <button data-li="4h" aria-pressed="true">4 часа</button>
     <button data-li="1d" aria-pressed="false">Дневно</button>
     <button id="lq-cur" aria-pressed="false">Маркер</button>
+    <button id="lq-side" aria-pressed="true">Разрез отстрани</button>
   </div>
   <div class="controls" id="lq-len">
     <button data-ll="200">Кратък</button>
@@ -933,7 +938,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
 </div>
 
 <footer>
-  <span style="font-family:var(--mono);color:var(--ink)">версия 55</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
+  <span style="font-family:var(--mono);color:var(--ink)">версия 56</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
   Фъндингът и откритият интерес идват от публичните API-та на Binance, Bybit, OKX и Hyperliquid.
   Ако някоя борса покаже грешка, най-честата причина е блокиране по регион или ограничение на заявките — изчакай минута и обнови.
 </footer>
@@ -1149,17 +1154,17 @@ function drawChart(){
       g.fillStyle = f.v>=0 ? long : short;
       g.fillRect(bx-bw/2, f.v>=0 ? frMid-h : frMid, bw, Math.max(1.5,h));
     });
-    g.font = '400 19px '+css.getPropertyValue('--mono');
+    g.font = '400 19px '+css.getPropertyValue('--num');
     g.fillStyle = dim;
     g.fillText('±'+mx.toFixed(0)+'%', pad.l, frTop+16);
   } else {
-    g.font = '400 19px '+css.getPropertyValue('--mono');
+    g.font = '400 19px '+css.getPropertyValue('--num');
     g.fillStyle = rule;
     g.fillText('няма данни за фъндинг', pad.l, frMid-8);
   }
 
   // етикети по краищата
-  g.font = '400 20px '+css.getPropertyValue('--mono');
+  g.font = '400 20px '+css.getPropertyValue('--num');
   g.fillStyle = dim;
   const d0 = new Date(t0), d1 = new Date(t1);
   const lbl = d => d.getDate()+'.'+(d.getMonth()+1)+' '+String(d.getHours()).padStart(2,'0')+':00';
@@ -1813,7 +1818,7 @@ function drawPrice(){
   const inv = yy => { const q = hi-(yy-pad.t)/(pb-pad.t)*(hi-lo); return S.pLog?Math.exp(q):q; };
 
   g.strokeStyle = rule; g.lineWidth=1;
-  g.font = '400 20px '+css.getPropertyValue('--mono');
+  g.font = '400 20px '+css.getPropertyValue('--num');
   for(let k=0;k<=4;k++){
     const yy = pad.t + k*(pb-pad.t)/4;
     g.beginPath(); g.moveTo(pad.l,yy); g.lineTo(W-pad.r,yy); g.stroke();
@@ -1892,7 +1897,7 @@ function drawPrice(){
     g.fillStyle = panel; g.fillRect(W-pad.r+4, py-16, pad.r-8, 32);
     g.strokeStyle = ink; g.lineWidth=1; g.strokeRect(W-pad.r+4, py-16, pad.r-8, 32);
     g.fillStyle = ink;
-    const lbl = vis[at]>=1000 ? (vis[at]/1000).toFixed(2)+'K' : vis[at].toFixed(vis[at]<10?4:2);
+    const lbl = axPrice(vis[at], g, pad.r-12);
     g.fillText(lbl, W-pad.r+12, py+7);
   }
   g.beginPath(); g.arc(x(at), y(vis[at]), 5, 0, Math.PI*2);
@@ -2499,7 +2504,7 @@ function drawZ(){
   const x = i => pad.l + i*(W-pad.l-pad.r)/(n-1);
   const y = q => pad.t + (tmx-SC.f(q))/trr*(H-pad.t-pad.b);
 
-  g.font = '400 19px '+css.getPropertyValue('--mono');
+  g.font = '400 19px '+css.getPropertyValue('--num');
   const lbl = q => Math.abs(q)>=100 ? q.toFixed(0) : Math.abs(q)>=10 ? q.toFixed(1) : q.toFixed(2);
 
   // зони: при Z-score по персентили, иначе по класическите прагове
@@ -2840,7 +2845,7 @@ function drawPgram(){
   const py = v => pad.t + (1 - v/maxP)*(H-pad.t-pad.b);
 
   g.strokeStyle = rule; g.lineWidth=1;
-  g.font = '400 19px '+css.getPropertyValue('--mono'); g.fillStyle = dim;
+  g.font = '400 19px '+css.getPropertyValue('--num'); g.fillStyle = dim;
   [7,14,30,60,90,180,365,730].filter(q=>q>=lim[0]&&q<=lim[1]).forEach(q=>{
     const xx = pad.l + (Math.log(q)-x0)/(x1-x0)*(W-pad.l-pad.r);
     g.beginPath(); g.moveTo(xx,pad.t); g.lineTo(xx,H-pad.b); g.stroke();
@@ -2996,7 +3001,7 @@ function drawBandpass(){
   for(let i=0;i<M;i++) i?g.lineTo(x(i),cy(cyc[i])):g.moveTo(x(i),cy(cyc[i]));
   g.strokeStyle = ink; g.lineWidth=2; g.stroke();
 
-  g.font = '400 19px '+css.getPropertyValue('--mono'); g.fillStyle = dim;
+  g.font = '400 19px '+css.getPropertyValue('--num'); g.fillStyle = dim;
   g.fillText(new Date(spec.t[0]).getFullYear(), pad.l, H-6);
   const tx = String(new Date(spec.t[M-1]).getFullYear());
   g.fillText(tx, W-pad.r-g.measureText(tx).width, H-6);
@@ -3073,7 +3078,7 @@ function drawCbp(){
 
   g.strokeStyle = rule; g.lineWidth=1;
   g.beginPath(); g.moveTo(pad.l,mid); g.lineTo(W-pad.r,mid); g.stroke();
-  g.font = '400 19px '+css.getPropertyValue('--mono'); g.fillStyle = dim;
+  g.font = '400 19px '+css.getPropertyValue('--num'); g.fillStyle = dim;
   g.fillText('0', W-pad.r+10, mid+7);
   g.fillText('+'+amp.toFixed(0), W-pad.r+10, mid-bh(amp)+6);
   g.fillText('-'+amp.toFixed(0), W-pad.r+10, mid+bh(amp)+6);
@@ -3398,7 +3403,7 @@ function drawEtf(){
 
   g.strokeStyle = rule; g.lineWidth=1;
   g.beginPath(); g.moveTo(pad.l,mid); g.lineTo(W-pad.r,mid); g.stroke();
-  g.font = '400 19px '+css.getPropertyValue('--mono'); g.fillStyle = dim;
+  g.font = '400 19px '+css.getPropertyValue('--num'); g.fillStyle = dim;
   g.fillText('0', W-pad.r+10, mid+7);
   g.fillText(usd(amp), W-pad.r+10, mid-barH(amp)+6);
   g.fillText('-'+usd(amp), W-pad.r+10, mid+barH(amp)+6);
@@ -3628,7 +3633,7 @@ function drawMeas(){
   const UP=css.getPropertyValue('--up').trim(), DN=css.getPropertyValue('--down').trim();
 
   g.strokeStyle = rule; g.lineWidth=1;
-  g.font = '400 20px '+css.getPropertyValue('--mono');
+  g.font = '400 20px '+css.getPropertyValue('--num');
   for(let k=0;k<=4;k++){
     const yy = pad.t + k*(H-pad.t-pad.b)/4;
     g.beginPath(); g.moveTo(pad.l,yy); g.lineTo(W-pad.r,yy); g.stroke();
@@ -3691,7 +3696,7 @@ function drawMeas(){
 
     const dp = (sel.p1/sel.p0-1)*100;
     const lbl = pct(dp);
-    g.font = '500 24px '+css.getPropertyValue('--mono');
+    g.font = '500 24px '+css.getPropertyValue('--num');
     const tw = g.measureText(lbl).width;
     const lxp = Math.min(W-pad.r-tw-12, Math.max(pad.l+6, (xa+xb)/2 - tw/2));
     const lyp = Math.min(ya,yb) - 10;
@@ -3701,7 +3706,7 @@ function drawMeas(){
     g.fillStyle = col; g.fillText(lbl, lxp, lyp);
   }
 
-  g.font = '400 20px '+css.getPropertyValue('--mono');
+  g.font = '400 20px '+css.getPropertyValue('--num');
   g.fillStyle = dim;
   const fd = ms => { const d=new Date(ms);
     return (S.mInt==='1h'||S.mInt==='4h')
@@ -3721,7 +3726,7 @@ function drawMeas(){
     g.setLineDash([]);
     g.fillStyle = ink; g.beginPath(); g.arc(mx2, my, 4, 0, 7); g.fill();
     const lb = fmt(mp, mp<10?4:2);
-    g.font = '500 20px '+css.getPropertyValue('--mono');
+    g.font = '500 20px '+css.getPropertyValue('--num');
     g.fillStyle = css.getPropertyValue('--ground').trim();
     g.fillRect(W-pad.r+4, my-13, pad.r-6, 26);
     g.fillStyle = ink; g.fillText(lb, W-pad.r+9, my+7);
@@ -4151,7 +4156,7 @@ function drawVp(){
 
   // решетка
   g.strokeStyle = rule; g.lineWidth=1;
-  g.font = '400 20px '+css.getPropertyValue('--mono');
+  g.font = '400 20px '+css.getPropertyValue('--num');
   for(let k=0;k<=4;k++){
     const yy = pad.t + k*(H-pad.t-pad.b)/4;
     g.beginPath(); g.moveTo(pad.l,yy); g.lineTo(W-pad.r,yy); g.stroke();
@@ -4211,9 +4216,9 @@ function drawVp(){
   const yl = Math.max(pad.t+14, Math.min(H-pad.b-14, y(vp.last)));
   const lcol = off ? hot : ink;
   if(!off){ g.fillStyle = ink; g.beginPath(); g.arc(x(I1), yl, 5, 0, Math.PI*2); g.fill(); }
-  g.font = '500 21px '+css.getPropertyValue('--mono');
+  g.font = '500 21px '+css.getPropertyValue('--num');
   const lb = (off?(vp.last>top?'↑ ':'↓ '):'')
-           + (vp.last>=1000?(vp.last/1000).toFixed(2)+'K':vp.last.toFixed(vp.last<10?4:2));
+           + axPrice(vp.last, g, pad.r-16);
   g.fillStyle = css.getPropertyValue('--ground').trim();
   g.fillRect(W-pad.r+6, yl-14, pad.r-10, 28);
   g.strokeStyle = lcol; g.lineWidth=1.5; g.strokeRect(W-pad.r+6, yl-14, pad.r-10, 28);
@@ -4231,7 +4236,7 @@ function drawVp(){
   }
 
   // етикети вляво
-  g.font = '400 19px '+css.getPropertyValue('--mono');
+  g.font = '400 19px '+css.getPropertyValue('--num');
   g.fillStyle = dim;
   g.fillText('POC', pad.l+4, y(vp.pocP)-6);
   g.fillText('VAH', pad.l+4, y(vp.vah)-6);
@@ -4241,7 +4246,7 @@ function drawVp(){
     return (vp.int==='1h'||vp.int==='4h')
       ? d.getDate()+'.'+(d.getMonth()+1)+' '+String(d.getHours()).padStart(2,'0')+':00'
       : d.getDate()+'.'+(d.getMonth()+1)+'.'+String(d.getFullYear()).slice(2); };
-  g.font = '400 19px '+css.getPropertyValue('--mono');
+  g.font = '400 19px '+css.getPropertyValue('--num');
   g.fillStyle = dim;
   g.fillText(fdv(vp.t[I0]), pad.l, H-8);
   const txv = fdv(vp.t[I1]);
@@ -4487,7 +4492,8 @@ const LQ_NB = 140;       // ценови кошчета
 let lq = null;
 S.lqInt='4h'; S.lqLen=400; S.lqMix='retail'; S.lqTouch=true; S.lqDecay=true;
 S.lqHL=7; S.lqK=4; S.lqCur=false;
-let lqMark = null;   // {i, p} — време и цена под пръста
+let lqMark = null;
+S.lqSide = true;   // разрез отстрани, споделящ ценовата ос   // {i, p} — време и цена под пръста
 let lqView = null;   // {i0, i1} — видим отрез при увеличение
 
 // цветова стълба за картата
@@ -4615,6 +4621,9 @@ function buildLq(){
 function lqGeom(){
   const cv = document.getElementById('lqchart');
   const W=cv.width, H=cv.height, pad={l:8,r:92,t:14,b:28};
+  // Панелът отстрани дели същата ценова ос с картата. Затова се пази място тук,
+  // а не се рисува втора графика — иначе двете трябва да се сверяват на око.
+  const secW = S.lqSide ? 190 : 0;
   const N = (lq && lq.grid) ? lq.grid.length : 1;
   if(!lqView) lqView = { i0:0, i1:N-1 };
   lqView.i0 = Math.max(0, Math.min(lqView.i0, N-2));
@@ -4628,8 +4637,8 @@ function lqGeom(){
   const b1 = Math.max(b0+1, Math.min(LQ_NB-1, lq.bin(hi*1.115)));
   const pLo = lq.binP(b0)-lq.step/2, pHi = lq.binP(b1)+lq.step/2;
 
-  const PW=W-pad.l-pad.r, PH=H-pad.t-pad.b;
-  return { cv,W,H,pad, N,i0,i1,n, b0,b1, pLo,pHi, PW,PH,
+  const PW=W-pad.l-pad.r-secW, PH=H-pad.t-pad.b;
+  return { cv,W,H,pad,secW, N,i0,i1,n, b0,b1, pLo,pHi, PW,PH,
     y: p => pad.t + (pHi-p)/(pHi-pLo)*PH,
     x: i => pad.l + (i-i0+0.5)*PW/n,
     invY: yy => pHi - (yy-pad.t)/PH*(pHi-pLo),
@@ -4641,7 +4650,7 @@ function drawLq(){
   g.clearRect(0,0,cv.width,cv.height);
   if(!lq || !lq.grid) return;
   const d = lq, G = lqGeom();
-  const {W,H,pad,i0,i1,n,b0,b1,pLo,pHi,PW,PH,x,y} = G;
+  const {W,H,pad,secW,i0,i1,n,b0,b1,pLo,pHi,PW,PH,x,y} = G;
   const nb = b1-b0+1;
 
   const css = getComputedStyle(document.documentElement);
@@ -4669,12 +4678,12 @@ function drawLq(){
   g.drawImage(off, pad.l, pad.t, PW, PH);
 
   // ценова скала
-  g.font = '400 20px '+css.getPropertyValue('--mono');
+  g.font = '400 20px '+css.getPropertyValue('--num');
   for(let k=0;k<=5;k++){
     const yy = pad.t + k*PH/5;
     const v = pHi - k*(pHi-pLo)/5;
     g.fillStyle = dim;
-    g.fillText(v>=1000?(v/1000).toFixed(2)+'K':v.toFixed(v<10?3:1), W-pad.r+9, yy+7);
+    g.fillText(axPrice(v, g, pad.r-14), W-pad.r-secW+9, yy+7);
   }
 
   // цената отгоре
@@ -4699,21 +4708,21 @@ function drawLq(){
   if(i1 === d.c.length-1){
     const last = d.c[i1], yl = y(last);
     g.fillStyle = css.getPropertyValue('--ground').trim();
-    g.fillRect(W-pad.r+5, yl-14, pad.r-9, 28);
-    g.strokeStyle = ink; g.lineWidth=1.5; g.strokeRect(W-pad.r+5, yl-14, pad.r-9, 28);
-    g.font = '500 21px '+css.getPropertyValue('--mono');
+    g.fillRect(W-pad.r-secW+5, yl-14, pad.r-9, 28);
+    g.strokeStyle = ink; g.lineWidth=1.5; g.strokeRect(W-pad.r-secW+5, yl-14, pad.r-9, 28);
+    g.font = '500 21px '+css.getPropertyValue('--num');
     g.fillStyle = ink;
-    g.fillText(last>=1000?(last/1000).toFixed(2)+'K':last.toFixed(last<10?4:2), W-pad.r+10, yl+7);
+    g.fillText(axPrice(last, g, pad.r-15), W-pad.r-secW+10, yl+7);
   }
 
   // дати
-  g.font = '400 20px '+css.getPropertyValue('--mono'); g.fillStyle = dim;
+  g.font = '400 20px '+css.getPropertyValue('--num'); g.fillStyle = dim;
   const fd = ms => { const q=new Date(ms);
     return S.lqInt==='1d' ? q.getDate()+'.'+(q.getMonth()+1)+'.'+String(q.getFullYear()).slice(2)
                           : q.getDate()+'.'+(q.getMonth()+1)+' '+String(q.getHours()).padStart(2,'0')+':00'; };
   g.fillText(fd(d.t[i0]), pad.l, H-8);
   const tx = fd(d.t[i1]);
-  g.fillText(tx, W-pad.r-g.measureText(tx).width, H-8);
+  g.fillText(tx, W-pad.r-secW-g.measureText(tx).width, H-8);
 
   // кръстачка
   if(lqMark && lqMark.i>=i0 && lqMark.i<=i1){
@@ -4721,18 +4730,114 @@ function drawLq(){
     const mx2 = x(lqMark.i), my = y(mp);
     g.strokeStyle = ink; g.lineWidth=1.5; g.setLineDash([6,6]);
     g.beginPath(); g.moveTo(mx2, pad.t); g.lineTo(mx2, H-pad.b); g.stroke();
-    g.beginPath(); g.moveTo(pad.l, my); g.lineTo(W-pad.r, my); g.stroke();
+    g.beginPath(); g.moveTo(pad.l, my); g.lineTo(W-pad.r-secW, my); g.stroke();
     g.setLineDash([]);
     g.fillStyle = css.getPropertyValue('--ground').trim();
-    g.fillRect(W-pad.r+5, my-13, pad.r-9, 26);
-    g.strokeStyle = ink; g.lineWidth=1.2; g.strokeRect(W-pad.r+5, my-13, pad.r-9, 26);
-    g.font = '500 20px '+css.getPropertyValue('--mono');
+    g.fillRect(W-pad.r-secW+5, my-13, pad.r-9, 26);
+    g.strokeStyle = ink; g.lineWidth=1.2; g.strokeRect(W-pad.r-secW+5, my-13, pad.r-9, 26);
+    g.font = '500 20px '+css.getPropertyValue('--num');
     g.fillStyle = ink;
-    g.fillText(mp>=1000?(mp/1000).toFixed(2)+'K':mp.toFixed(mp<10?4:2), W-pad.r+10, my+7);
+    g.fillText(axPrice(mp, g, pad.r-15), W-pad.r-secW+10, my+7);
   }
+
+  if(secW) drawLqPanel(g, G, css);
 
   renderLqCross();
   renderLqSide();
+}
+
+/* Разрезът отстрани: същата ценова ос като картата, завъртян на 90°.
+   Две неща наведнъж —
+   стълбчетата са плътността по ниво, оцветена със същата стълба като картата,
+   за да се чете като продължение на нея;
+   кривата е НАТРУПВАНЕ, тръгващо от текущата цена навън: при всяко ниво показва
+   колко общо би се помело, ако цената стигне дотам. Това е числото, което има
+   значение за решение — едно ниво само по себе си рядко значи нещо. */
+function drawLqPanel(g, G, css){
+  const {W,H,pad,secW,b0,b1,y} = G;
+  const x0 = W-secW+12, x1 = W-10, inner = x1-x0;
+  if(inner < 30) return;
+
+  const L = lq.lastL, S_ = lq.lastS;
+  const dim   = css.getPropertyValue('--ink-dim').trim();
+  const rule  = css.getPropertyValue('--rule').trim();
+  const ink   = css.getPropertyValue('--ink').trim();
+  const LONG  = css.getPropertyValue('--long').trim();
+  const SHORT = css.getPropertyValue('--short').trim();
+
+  g.save();
+  g.beginPath(); g.rect(x0-7, pad.t, secW, H-pad.t-pad.b); g.clip();
+
+  g.strokeStyle = rule; g.lineWidth = 1;
+  g.beginPath(); g.moveTo(x0-6, pad.t); g.lineTo(x0-6, H-pad.b); g.stroke();
+
+  const pc = lq.c[lq.c.length-1];
+  const bc = Math.max(b0, Math.min(b1, lq.bin(pc)));
+  const yc = y(pc);
+
+  // --- 1. натрупването отива най-отзад, като фон ---
+  let totD = 0, totU = 0;
+  for(let b=bc;b>=b0;b--) totD += L[b]||0;
+  for(let b=bc;b<=b1;b++) totU += S_[b]||0;
+  const tot = Math.max(totD, totU);
+
+  const curve = (to, step, arr) => {
+    let cum = 0; const pts = [[x0, yc]];
+    for(let b=bc; step>0 ? b<=to : b>=to; b+=step){
+      cum += arr[b]||0;
+      pts.push([x0 + (tot>0?cum/tot:0)*inner, y(lq.binP(b))]);
+    }
+    return pts;
+  };
+  const paint = (pts, col) => {
+    g.beginPath(); g.moveTo(pts[0][0], pts[0][1]);
+    pts.forEach(q=>g.lineTo(q[0], q[1]));
+    g.lineTo(x0, pts[pts.length-1][1]); g.closePath();
+    g.fillStyle = col+'1f'; g.fill();
+  };
+  const down = curve(b0, -1, L), up = curve(b1, +1, S_);
+  if(tot > 0){ paint(down, LONG); paint(up, SHORT); }
+
+  // --- 2. стълбчетата отгоре, на две трети от ширината, за да не се крият ---
+  let mx = 0;
+  for(let b=b0;b<=b1;b++) mx = Math.max(mx, (L[b]||0)+(S_[b]||0));
+  const barW = inner*0.62;
+  const bh = Math.max(1, (H-pad.t-pad.b)/(b1-b0+1));
+  if(mx > 0){
+    for(let b=b0;b<=b1;b++){
+      const v = (L[b]||0)+(S_[b]||0);
+      if(v <= 0) continue;
+      const u = Math.pow(Math.min(1, v/lq.mx), 0.62);
+      const [r,gg,bb] = lqColor(u);
+      g.fillStyle = `rgb(${r|0},${gg|0},${bb|0})`;
+      g.fillRect(x0, y(lq.binP(b))-bh/2, Math.max(1, v/mx*barW), bh+0.5);
+    }
+  }
+
+  // --- 3. линиите на натрупването най-отгоре ---
+  if(tot > 0){
+    [[down,LONG],[up,SHORT]].forEach(([pts,col])=>{
+      g.beginPath();
+      pts.forEach((q,k)=> k ? g.lineTo(q[0],q[1]) : g.moveTo(q[0],q[1]));
+      g.strokeStyle = col; g.lineWidth = 2; g.stroke();
+    });
+    g.strokeStyle = ink; g.lineWidth = 1; g.setLineDash([3,3]);
+    g.beginPath(); g.moveTo(x0, yc); g.lineTo(x1, yc); g.stroke();
+    g.setLineDash([]);
+  }
+  g.restore();
+
+  // --- 4. надписите извън отрязването, подравнени вдясно ---
+  if(tot > 0){
+    g.font = '500 19px '+css.getPropertyValue('--num');
+    const put = (txt, col, yy) => {
+      g.fillStyle = col;
+      g.fillText(txt, x1-g.measureText(txt).width, yy);
+    };
+    put(usd(totU), SHORT, Math.max(pad.t+16, yc-14));
+    put(usd(totD), LONG,  Math.min(H-pad.b-6, yc+28));
+  }
+
 }
 
 function renderLqSide(){
@@ -4742,7 +4847,14 @@ function renderLqSide(){
     `<span>слабо</span><span class="ramp" style="background:linear-gradient(90deg,${stops.join(',')})"></span><span>плътно</span>`
     + `<span style="margin-left:auto;font-family:var(--mono);font-size:11px">${lq.oiMap?'с открит интерес':'само по оборот'}</span>`;
 
-  document.getElementById('lq-mixnote').innerHTML = LQ_MIX[S.lqMix].note;
+  document.getElementById('lq-mixnote').innerHTML =
+    (S.lqSide
+      ? '<b>Разрезът отстрани</b> дели същата ценова ос с картата. Стълбчетата са плътността по ниво, '
+        + 'а линиите са <b>натрупване от текущата цена навън</b>: при всяко ниво показват колко общо би се '
+        + 'помело, ако цената стигне дотам. Кехлибареното надолу са лонгове, тюркоазеното нагоре — шортове. '
+        + 'Числата до цената са пълните суми за всяка посока в показания обхват.<br>'
+      : '')
+    + LQ_MIX[S.lqMix].note;
   document.getElementById('lq-rulenote').innerHTML =
     (S.lqTouch
       ? '<b>Махай при докосване</b> нулира нивата, през които цената вече е минала — те са били ликвидирани. Изключи го, за да видиш колко от картата е само натрупване.'
@@ -4976,7 +5088,7 @@ function drawLqSec(){
 
   // решетка и двете скали
   g.strokeStyle = rule; g.lineWidth=1;
-  g.font = '400 19px '+css.getPropertyValue('--mono');
+  g.font = '400 19px '+css.getPropertyValue('--num');
   for(let k=0;k<=4;k++){
     const yy = pad.t + k*PH/4;
     g.beginPath(); g.moveTo(pad.l,yy); g.lineTo(W-pad.r,yy); g.stroke();
@@ -5009,8 +5121,8 @@ function drawLqSec(){
     g.strokeStyle = css.getPropertyValue('--hot').trim(); g.lineWidth=2;
     g.setLineDash([7,6]); g.beginPath(); g.moveTo(cx,pad.t); g.lineTo(cx,pad.t+PH); g.stroke();
     g.setLineDash([]);
-    g.font = '500 20px '+css.getPropertyValue('--mono');
-    const lb = px>=1000?(px/1000).toFixed(2)+'K':px.toFixed(px<10?4:2);
+    g.font = '500 20px '+css.getPropertyValue('--num');
+    const lb = axPrice(px, g, pad.r-14);
     const tw = g.measureText(lb).width;
     g.fillStyle = css.getPropertyValue('--ground').trim();
     g.fillRect(Math.min(W-pad.r-tw-10, Math.max(pad.l, cx-tw/2-6)), pad.t-14, tw+12, 24);
@@ -5040,7 +5152,7 @@ function drawLqSec(){
   }
 
   // ценова ос
-  g.font = '400 19px '+css.getPropertyValue('--mono'); g.fillStyle = dim;
+  g.font = '400 19px '+css.getPropertyValue('--num'); g.fillStyle = dim;
   for(let k=0;k<=4;k++){
     const b = Math.round(b0 + k*(b1-b0)/4), p = lq.binP(b);
     const lb = p>=1000?(p/1000).toFixed(1)+'K':p.toFixed(p<10?3:1);
@@ -5115,6 +5227,11 @@ document.getElementById('lq-help').innerHTML = `
   <p><b>И трето.</b> Моделът не знае за добавен марж, частично закриване или хедж. Позиция, чийто собственик е долял марж, се е преместила надолу и моделът още я брои на старото място.</p>`;
 
 document.getElementById('lq-int').addEventListener('click', e=>{
+  if(e.target.id==='lq-side'){
+    S.lqSide = !S.lqSide;
+    e.target.setAttribute('aria-pressed', S.lqSide);
+    drawLq(); return;
+  }
   if(e.target.id==='lq-cur'){
     S.lqCur = !S.lqCur;
     e.target.setAttribute('aria-pressed', S.lqCur);
@@ -5292,7 +5409,7 @@ function drawCalc(){
   const y = v => pad.t + (vmx-v)/((vmx-vmn)||1)*PH;
 
   g.strokeStyle = rule; g.lineWidth=1;
-  g.font = '400 20px '+css.getPropertyValue('--mono');
+  g.font = '400 20px '+css.getPropertyValue('--num');
   for(let k=0;k<=4;k++){
     const yy = pad.t + k*PH/4, v = vmx - k*(vmx-vmn)/4;
     g.beginPath(); g.moveTo(pad.l,yy); g.lineTo(W-pad.r,yy); g.stroke();
@@ -5326,7 +5443,7 @@ function drawCalc(){
     if(pr==null || pr<lo || pr>hi) return;
     g.strokeStyle = col; g.lineWidth=1.5; g.setLineDash([6,5]);
     g.beginPath(); g.moveTo(x(pr),pad.t); g.lineTo(x(pr),pad.t+PH); g.stroke(); g.setLineDash([]);
-    g.font = '500 19px '+css.getPropertyValue('--mono');
+    g.font = '500 19px '+css.getPropertyValue('--num');
     const txt = label+' '+fmt(pr, pr<10?4:2);
     const tw = g.measureText(txt).width;
     const px0 = Math.max(pad.l+2, Math.min(W-pad.r-tw, x(pr)-tw/2));
@@ -5351,7 +5468,7 @@ function drawCalc(){
     g.beginPath(); g.arc(lx, ly, 6, 0, Math.PI*2);
     g.fillStyle = now.v>=0 ? UP : DN; g.fill();
     g.strokeStyle = ink; g.lineWidth=1.6; g.stroke();
-    g.font = '500 23px '+css.getPropertyValue('--mono');
+    g.font = '500 23px '+css.getPropertyValue('--num');
     const t2 = (now.v>=0?'+':'−')+usd(Math.abs(now.v))+'  '+pct(now.v/P.margin*100);
     const w2 = g.measureText(t2).width;
     const bx = Math.max(pad.l+2, Math.min(W-pad.r-w2-12, lx+12));
@@ -5363,7 +5480,7 @@ function drawCalc(){
     g.fillStyle = now.v>=0 ? UP : DN; g.fillText(t2, bx, by);
   }
 
-  g.font = '400 20px '+css.getPropertyValue('--mono'); g.fillStyle = dim;
+  g.font = '400 20px '+css.getPropertyValue('--num'); g.fillStyle = dim;
   g.fillText(fmt(lo, lo<10?3:0), pad.l, H-8);
   const tx = fmt(hi, hi<10?3:0);
   g.fillText(tx, W-pad.r-g.measureText(tx).width, H-8);
@@ -5812,7 +5929,7 @@ function drawLfVal(R){
     st ? g.lineTo(x(k),yP(v)) : (g.moveTo(x(k),yP(v)), st=true); }
   g.strokeStyle = dim; g.lineWidth=2; g.stroke();
 
-  g.font = '400 20px '+css.getPropertyValue('--mono');
+  g.font = '400 20px '+css.getPropertyValue('--num');
   g.fillStyle = dim;
   const pl = lq.binP(b0), ph = lq.binP(b1);
   g.fillText(fmt(pl, pl<10?3:0), pad.l, H-8);
@@ -6242,7 +6359,7 @@ function drawGrid(){
   const x = i => pad.l + (i-i0)*PW/((n-1)||1);
   const y = v => pad.t + (mx-v)/((mx-mn)||1)*PH;
 
-  g.font = '400 19px '+css.getPropertyValue('--mono');
+  g.font = '400 19px '+css.getPropertyValue('--num');
   R.lv.forEach(L=>{
     const col = L.side==='buy' ? A : L.side==='sell' ? T : rule;
     g.strokeStyle = col + (L.fills?'99':'44'); g.lineWidth = L.fills?1.6:1;
@@ -6287,7 +6404,7 @@ function drawGrid(){
     for(let i=i0;i<=i1;i++) i===i0?ge.moveTo(ex(i),ey(arr[i])):ge.lineTo(ex(i),ey(arr[i]));
     ge.strokeStyle = col; ge.lineWidth = w; ge.stroke();
   });
-  ge.font = '400 19px '+css.getPropertyValue('--mono'); ge.fillStyle = dim;
+  ge.font = '400 19px '+css.getPropertyValue('--num'); ge.fillStyle = dim;
   ge.fillText(usd(emx), EW-ep.r+9, ey(emx)+12);
   ge.fillText(usd(R.cap), EW-ep.r+9, ey(R.cap)+6);
 
@@ -6564,7 +6681,7 @@ function drawGlChart(){
   const ground=css.getPropertyValue('--ground').trim();
 
   if(!glSt || glTicks.length<2){
-    g.font='400 22px '+css.getPropertyValue('--mono'); g.fillStyle=rule;
+    g.font='400 22px '+css.getPropertyValue('--num'); g.fillStyle=rule;
     const t = glOn ? 'чака сделки…' : 'спряно';
     g.fillText(t, pad.l+8, H/2);
     return;
@@ -6585,7 +6702,7 @@ function drawGlChart(){
   const y = v => pad.t + (hi-v)/((hi-lo)||1)*PH;
 
   // нивата
-  g.font = '400 19px '+css.getPropertyValue('--mono');
+  g.font = '400 19px '+css.getPropertyValue('--num');
   glSt.lv.forEach(L=>{
     if(L.px<lo || L.px>hi) return;
     const yy = y(L.px);
@@ -6621,7 +6738,7 @@ function drawGlChart(){
     g.beginPath(); g.arc(ex, ey, 7, 0, Math.PI*2);
     g.fillStyle = A; g.fill();
     g.strokeStyle = ink; g.lineWidth=2; g.stroke();
-    g.font = '500 19px '+css.getPropertyValue('--mono');
+    g.font = '500 19px '+css.getPropertyValue('--num');
     const tag = 'старт · '+usd(glSt.init.dollars)+' → '+fmt(glSt.init.u, glSt.init.u<1?5:3);
     const tw = g.measureText(tag).width;
     const tagX = Math.min(W-pad.r-tw-6, ex+12);
@@ -6650,7 +6767,7 @@ function drawGlChart(){
   g.beginPath(); g.arc(x(last.t), ly, 5, 0, Math.PI*2); g.fillStyle=ink; g.fill();
   g.fillStyle = ground; g.fillRect(W-pad.r+5, ly-13, pad.r-9, 26);
   g.strokeStyle = ink; g.lineWidth=1.5; g.strokeRect(W-pad.r+5, ly-13, pad.r-9, 26);
-  g.font = '500 20px '+css.getPropertyValue('--mono'); g.fillStyle = ink;
+  g.font = '500 20px '+css.getPropertyValue('--num'); g.fillStyle = ink;
   g.fillText(fmt(last.px, last.px<10?4:2), W-pad.r+10, ly+7);
 
   // Таблото е двуколонно: вляво какво е спечелено, вдясно какво има в сметката.
@@ -6668,10 +6785,10 @@ function drawGlChart(){
     [S.sym,     fmt(R.qty, 6),     dim],
   ];
 
-  g.font = '400 18px '+css.getPropertyValue('--mono');
+  g.font = '400 18px '+css.getPropertyValue('--num');
   const wOf = col => Math.max(...col.map(r=>g.measureText(r[0]).width))
-                   + Math.max(...col.map(r=>{ g.font='500 20px '+css.getPropertyValue('--mono');
-                       const w=g.measureText(r[1]).width; g.font='400 18px '+css.getPropertyValue('--mono'); return w; }))
+                   + Math.max(...col.map(r=>{ g.font='500 20px '+css.getPropertyValue('--num');
+                       const w=g.measureText(r[1]).width; g.font='400 18px '+css.getPropertyValue('--num'); return w; }))
                    + 22;
   const wA = wOf(colA), wB = wOf(colB);
   const boxW = wA + wB + 18, boxH = 3*23 + 14;
@@ -6685,9 +6802,9 @@ function drawGlChart(){
 
   const drawCol = (col, x0, w) => col.forEach((r,i)=>{
     const yy = by0 + 22 + i*23;
-    g.font = '400 18px '+css.getPropertyValue('--mono');
+    g.font = '400 18px '+css.getPropertyValue('--num');
     g.fillStyle = dim; g.fillText(r[0], x0+10, yy);
-    g.font = '500 20px '+css.getPropertyValue('--mono');
+    g.font = '500 20px '+css.getPropertyValue('--num');
     g.fillStyle = r[2];
     const vw = g.measureText(r[1]).width;
     g.fillText(r[1], x0+w-10-vw, yy);
@@ -6696,7 +6813,7 @@ function drawGlChart(){
   drawCol(colB, bx0+wA+18, wB);
 
   // времева ос
-  g.font = '400 19px '+css.getPropertyValue('--mono'); g.fillStyle = dim;
+  g.font = '400 19px '+css.getPropertyValue('--num'); g.fillStyle = dim;
   const hhmm = ms => { const d=new Date(ms);
     return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')+':'+String(d.getSeconds()).padStart(2,'0'); };
   g.fillText(hhmm(t0), pad.l, H-6);
@@ -6722,6 +6839,17 @@ let grOpt = null;
 // Купуваш за D, остават D(1−f)/P единици; продаваш на P(1+δ) и остават
 // D(1−f)²(1+δ). Нулата е при (1−f)²(1+δ) = 1.
 const grFeeFloor = f => 1/Math.pow(1-f,2) - 1;
+
+/* Етикет на ценова ос. Пише цялото число с разделители (3 800), както правят
+   четимите табла, и минава на съкратен запис (3.80K) само ако не се побира в
+   отделеното поле — така при тесен екран цифрите не излизат едни върху други. */
+function axPrice(v, g, maxW){
+  if(!isFinite(v)) return '—';
+  const full = v>=1000 ? Math.round(v).toLocaleString('bg-BG')
+             : v.toFixed(v<10 ? 4 : v<100 ? 3 : 2);
+  if(!g || !maxW || g.measureText(full).width <= maxW) return full;
+  return v>=1000 ? (v/1000).toFixed(2)+'K' : full;
+}
 
 function grSweep(){
   if(!grData) return null;
@@ -6793,7 +6921,7 @@ function drawOpt(){
   const y = v => pad.t + (mx-v)/((mx-mn)||1)*PH;
 
   g.strokeStyle = rule; g.lineWidth=1;
-  g.font = '400 19px '+css.getPropertyValue('--mono');
+  g.font = '400 19px '+css.getPropertyValue('--num');
   for(let k=0;k<=3;k++){
     const yy = pad.t+k*PH/3, v = mx-k*(mx-mn)/3;
     g.beginPath(); g.moveTo(pad.l,yy); g.lineTo(W-pad.r,yy); g.stroke();
