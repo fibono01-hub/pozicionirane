@@ -145,6 +145,7 @@ canvas{width:100%;height:290px;display:block;
 #lf-list table{font-size:12px}
 #lf-list td{padding:7px 0}
 #lqchart{touch-action:pan-y}
+#lqdelta{width:100%;height:105px;display:block;margin-top:2px}
 #lfvchart{height:240px;width:100%;display:block;margin-top:10px}
 .keyrow{display:block;font-size:12px;color:var(--ink-dim);margin-top:8px}
 .keyrow input{display:block;width:100%;margin-top:4px;background:var(--panel);
@@ -704,6 +705,8 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
 
   <h2 style="margin-top:4px">Карта във времето</h2>
   <canvas id="lqchart" width="1400" height="820"></canvas>
+  <canvas id="lqdelta" width="1400" height="210"></canvas>
+  <p class="note" id="lq-deltanote" style="margin-top:2px"></p>
   <div id="lq-cross"></div>
   <div class="legend" id="lq-scale"></div>
 
@@ -938,7 +941,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
 </div>
 
 <footer>
-  <span style="font-family:var(--mono);color:var(--ink)">версия 57</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
+  <span style="font-family:var(--mono);color:var(--ink)">версия 58</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
   Фъндингът и откритият интерес идват от публичните API-та на Binance, Bybit, OKX и Hyperliquid.
   Ако някоя борса покаже грешка, най-честата причина е блокиране по регион или ограничение на заявките — изчакай минута и обнови.
 </footer>
@@ -4741,11 +4744,88 @@ function drawLq(){
   }
 
   if(secW) drawLqPanel(g, G, css);
+  drawLqDelta(G, css);
   // разрезът отдолу чете същия срез, значи се обновява заедно с маркера
   if(document.getElementById('lqsec')) drawLqSec();
 
   renderLqCross();
   renderLqSide();
+}
+
+/* Кумулативна делта под картата, на същата времева ос.
+   delta = 2·(агресивни покупки) − (общ оборот), защото оборотът е покупки плюс
+   продажби, а борсата дава само едната страна. Сумата тръгва от нула в левия
+   край на показания отрязък: интересува ни натрупването в това, което гледаш,
+   а не абсолютна стойност от произволно начало. */
+function drawLqDelta(G, css){
+  const cv = document.getElementById('lqdelta'); if(!cv) return;
+  const g = cv.getContext('2d');
+  const W=cv.width, H=cv.height;
+  g.clearRect(0,0,W,H);
+  if(!lq || !lq.qv) return;
+
+  const {pad, secW, i0, i1, n, PW} = G;
+  const padT = 22, padB = 20;   // място за надписите горе и долу
+  const UP = css.getPropertyValue('--up').trim(), DN = css.getPropertyValue('--down').trim();
+  const dim = css.getPropertyValue('--ink-dim').trim(), rule = css.getPropertyValue('--rule').trim();
+
+  const cum = new Float64Array(n);
+  let acc = 0;
+  for(let k=0;k<n;k++){
+    const i = i0+k;
+    acc += 2*(lq.tb[i]||0) - (lq.qv[i]||0);
+    cum[k] = acc;
+  }
+  let lo = Math.min(0, ...cum), hi = Math.max(0, ...cum);
+  if(hi===lo){ hi = 1; lo = -1; }
+  const span = hi-lo;
+  const x = k => pad.l + (k+0.5)*PW/n;
+  const y = v => padT + (hi-v)/span*(H-padT-padB);
+  const y0 = y(0);
+
+  // запълване по знак: над нулата натиск нагоре, под нея надолу
+  const fill = (positive) => {
+    g.beginPath(); g.moveTo(x(0), y0);
+    for(let k=0;k<n;k++){
+      const v = positive ? Math.max(0, cum[k]) : Math.min(0, cum[k]);
+      g.lineTo(x(k), y(v));
+    }
+    g.lineTo(x(n-1), y0); g.closePath();
+    g.fillStyle = (positive?UP:DN)+'3a'; g.fill();
+  };
+  fill(true); fill(false);
+
+  g.beginPath();
+  for(let k=0;k<n;k++) k?g.lineTo(x(k),y(cum[k])):g.moveTo(x(k),y(cum[k]));
+  g.strokeStyle = acc>=0?UP:DN; g.lineWidth=2; g.stroke();
+
+  g.strokeStyle = rule; g.lineWidth=1; g.setLineDash([4,4]);
+  g.beginPath(); g.moveTo(pad.l, y0); g.lineTo(pad.l+PW, y0); g.stroke();
+  g.setLineDash([]);
+
+  // маркерът се отразява и тук, за да се чете заедно с разреза
+  if(lqMark && S.lqCur && lqMark.i>=i0 && lqMark.i<=i1){
+    const mx = x(lqMark.i-i0);
+    g.strokeStyle = css.getPropertyValue('--ink').trim(); g.lineWidth=1; g.setLineDash([6,6]);
+    g.beginPath(); g.moveTo(mx, padT); g.lineTo(mx, H-padB); g.stroke();
+    g.setLineDash([]);
+  }
+
+  g.font = '400 18px '+css.getPropertyValue('--num');
+  g.fillStyle = dim;
+  g.fillText('кумулативна делта', pad.l, 16);
+  const endTxt = (acc>=0?'+':'−')+usd(Math.abs(acc));
+  g.fillStyle = acc>=0?UP:DN;
+  g.font = '500 19px '+css.getPropertyValue('--num');
+  g.fillText(endTxt, pad.l+PW-g.measureText(endTxt).width, Math.max(padT+16, Math.min(H-padB-10, y(acc)-8)));
+
+  const note = document.getElementById('lq-deltanote');
+  if(note){
+    const dir = acc>=0 ? 'покупки' : 'продажби';   // членът стои в 'агресивните'
+    note.innerHTML = `За показания отрязък агресивните <b>${dir}</b> водят с <b>${usd(Math.abs(acc))}</b>. `
+      + `Сама по себе си делтата казва малко — чете се спрямо цената. Ако тя продължава в една посока, `
+      + `а цената спре да я следва, значи някой поглъща потока, и това обикновено значи повече от самото число.`;
+  }
 }
 
 /* Разрезът отстрани: същата ценова ос като картата, завъртян на 90°.
