@@ -691,8 +691,8 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
     открит интерес. Всяко допускане е бутон, който можеш да промениш — именно затова я правим сами.</p>
 
   <div class="controls" id="lq-int">
-    <button data-li="1h" aria-pressed="false">1 час</button>
-    <button data-li="4h" aria-pressed="true">4 часа</button>
+    <button data-li="1h" aria-pressed="true">1 час</button>
+    <button data-li="4h" aria-pressed="false">4 часа</button>
     <button data-li="1d" aria-pressed="false">Дневно</button>
     <button id="lq-cur" aria-pressed="false">Маркер</button>
     <button id="lq-side" aria-pressed="true">Разрез отстрани</button>
@@ -745,14 +745,14 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
   <div id="lq-rulenote" class="note"></div>
 
   <div class="slider">
-    <label>Полуживот по време <b id="lq-hl-v">7 дни</b></label>
-    <input id="lq-hl" type="range" min="1" max="60" step="1" value="7">
+    <label>Полуживот по време <b id="lq-hl-v">60 дни</b></label>
+    <input id="lq-hl" type="range" min="0" max="120" step="1" value="60">
     <span class="hint">За колко дни нивото пада наполовина само от изминало време.</span>
   </div>
 
   <div class="slider">
-    <label>Чувствителност към разстояние <b id="lq-k-v">4,0</b></label>
-    <input id="lq-k" type="range" min="0" max="12" step="0.5" value="4">
+    <label>Чувствителност към разстояние <b id="lq-k-v">6,0</b></label>
+    <input id="lq-k" type="range" min="0" max="12" step="0.5" value="6">
     <span class="hint">Колко по-бързо затихва ниво, което цената е оставила зад себе си в изгодната за позицията посока. На нула затихването е само по време.</span>
   </div>
 
@@ -941,7 +941,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
 </div>
 
 <footer>
-  <span style="font-family:var(--mono);color:var(--ink)">версия 58</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
+  <span style="font-family:var(--mono);color:var(--ink)">версия 59</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
   Фъндингът и откритият интерес идват от публичните API-та на Binance, Bybit, OKX и Hyperliquid.
   Ако някоя борса покаже грешка, най-честата причина е блокиране по регион или ограничение на заявките — изчакай минута и обнови.
 </footer>
@@ -4493,8 +4493,8 @@ const MM = 0.004;        // поддържащ марж: ликвидацият�
 const LQ_NB = 140;       // ценови кошчета
 
 let lq = null;
-S.lqInt='4h'; S.lqLen=400; S.lqMix='retail'; S.lqTouch=true; S.lqDecay=true;
-S.lqHL=7; S.lqK=4; S.lqCur=false;
+S.lqInt='1h'; S.lqLen=400; S.lqMix='retail'; S.lqTouch=true; S.lqDecay=true;
+S.lqHL=60; S.lqK=6; S.lqCur=false;   // двата плъзгача тръгват от средата на обхвата си
 let lqMark = null;
 S.lqSide = true;   // разрез отстрани, споделящ ценовата ос   // {i, p} — време и цена под пръста
 let lqView = null;   // {i0, i1} — видим отрез при увеличение
@@ -4951,7 +4951,9 @@ function renderLqSide(){
       : '<b>Махането при докосване е изключено.</b> Картата показва всички изчислени нива, включително вече пометените — полезно за сравнение, но нереалистично.')
     + '<br>' +
     (S.lqDecay
-      ? '<b>Затихването</b> намалява наполовина всяко ниво на седем дни, защото позиции се закриват и доброволно. Без него старите зони стоят вечно — точно оттам идва илюзията за „мощна зона" отпреди месеци.'
+      ? (S.lqHL===0
+          ? '<b>Затихването е на нула дни</b> — всяко ниво изчезва веднага след бара, в който е възникнало. Картата показва само текущото натрупване, без никаква памет. Крайност за сравнение, не работна настройка.'
+          : `<b>Затихването</b> намалява наполовина всяко ниво на ${S.lqHL} ${S.lqHL===1?'ден':'дни'}, защото позиции се закриват и доброволно. Без него старите зони стоят вечно — точно оттам идва илюзията за „мощна зона" отпреди месеци.`)
       : '<b>Затихването е изключено.</b> Нивата се трупат без край, докато цената не ги докосне — така работят повечето публични карти.');
 
   // най-плътните зони: страната идва от самия модел, не от позицията спрямо цената
@@ -5379,7 +5381,7 @@ document.getElementById('lq-mix').addEventListener('click', e=>{
   if(lq){ buildLq(); lqShowView(); }
 });
 function lqSliders(){
-  document.getElementById('lq-hl-v').textContent = S.lqHL + (S.lqHL===1?' ден':' дни');
+  document.getElementById('lq-hl-v').textContent = S.lqHL===0 ? 'без памет' : S.lqHL + (S.lqHL===1?' ден':' дни');
   document.getElementById('lq-k-v').textContent  = fmt(S.lqK,1);
 }
 document.getElementById('lq-hl').addEventListener('input', e=>{
