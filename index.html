@@ -471,6 +471,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
       <button data-zm="all">Цяла история</button>
       <button data-zm="roll" aria-pressed="true">Плаващи 4 г.</button>
       <button id="ind-log" aria-pressed="false">Лог</button>
+      <button id="ind-cur" aria-pressed="false">Маркер</button>
     </div>
     <div id="ind-chain"></div>
     <div class="chips" id="ind-pick"></div>
@@ -482,6 +483,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
       <p class="note" id="ind-risknote" style="margin-top:0"></p>
     </div>
     <canvas id="zchart" width="1400" height="380"></canvas>
+    <div id="ind-cross"></div>
     <div class="legend">
       <span><i style="background:var(--ink)"></i>избраният индикатор</span>
       <span><i style="background:var(--ink-dim)"></i>цена, лог скала</span>
@@ -752,8 +754,8 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
   <div id="lq-rulenote" class="note"></div>
 
   <div class="slider">
-    <label>Полуживот по време <b id="lq-hl-v">60 дни</b></label>
-    <input id="lq-hl" type="range" min="0" max="120" step="1" value="60">
+    <label>Полуживот по време <b id="lq-hl-v">120 дни</b></label>
+    <input id="lq-hl" type="range" min="0" max="240" step="1" value="120">
     <span class="hint">За колко дни нивото пада наполовина само от изминало време.</span>
   </div>
 
@@ -948,7 +950,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
 </div>
 
 <footer>
-  <span style="font-family:var(--mono);color:var(--ink)">версия 60</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
+  <span style="font-family:var(--mono);color:var(--ink)">версия 61</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
   Фъндингът и откритият интерес идват от публичните API-та на Binance, Bybit, OKX и Hyperliquid.
   Ако някоя борса покаже грешка, най-честата причина е блокиране по регион или ограничение на заявките — изчакай минута и обнови.
 </footer>
@@ -2579,39 +2581,58 @@ function renderRiskCtl(series){
     ? `<br>Пунктираните линии са съставките, плътната е средната от трите. Днес — ${parts}.` : '');
 }
 
+/* --- геометрия, зум и маркер за графиката на индикаторите --- */
+let zView = null, zMark = null, zGeomCache = null;
+S.zCur = false;
+
+function zGeom(){
+  const c = document.getElementById('zchart');
+  if(!c || !chain) return null;
+  const all = indSeries();
+  const S1 = all[S.indPick] || all.z;
+  if(!S1 || !S1.v) return null;
+  const idx = S1.v.map((q,i)=>i).filter(i=>S1.v[i]!=null && isFinite(S1.v[i]));
+  const N = idx.length;
+  if(N<10) return null;
+
+  const W=c.width, H=c.height, pad={l:8,r:70,t:12,b:26};
+  if(zView && (zView.i1>N-1 || zView.i0<0 || zView.i1<=zView.i0)) zView = null;
+  const i0 = zView ? zView.i0 : 0, i1 = zView ? zView.i1 : N-1;
+  const n = i1-i0+1;
+
+  // мащабът се прави само по видимото, иначе при увеличение линията се смачква
+  // в тънка ивица и зумът не върши работа
+  const v = [];
+  for(let i=i0;i<=i1;i++) v.push(S1.v[idx[i]]);
+  const sp = v.slice();
+  if(S1.sub) S1.sub.forEach(sb=>{ for(let i=i0;i<=i1;i++){
+    const q = sb.v[idx[i]]; if(q!=null && isFinite(q)) sp.push(q); } });
+  const mn = Math.min(...sp) - Math.abs(Math.min(...sp))*0.05 - 0.05;
+  const mx = Math.max(...sp) + Math.abs(Math.max(...sp))*0.05 + 0.05;
+  const SC = indScale(S1, mn, mx);
+  const tmn = SC.f(mn), tmx = SC.f(mx), trr = (tmx-tmn) || 1;
+  const PW = W-pad.l-pad.r, PH = H-pad.t-pad.b, den = Math.max(1, n-1);
+
+  return { S1, idx, N, n, i0, i1, mn, mx, SC, trr, tmx, W, H, pad, PW, PH, c,
+    x: i => pad.l + (i-i0)*PW/den,
+    y: q => pad.t + (tmx-SC.f(q))/trr*PH,
+    invX: cx => Math.max(i0, Math.min(i1, i0 + Math.round((cx-pad.l)/PW*den))),
+    invY: cy => SC.g(tmx - (cy-pad.t)/PH*trr) };
+}
+
 function drawZ(){
   const c = document.getElementById('zchart'), g = c.getContext('2d');
-  const W=c.width, H=c.height, pad={l:8,r:70,t:12,b:26};
-  g.clearRect(0,0,W,H);
-  if(!chain){ renderRiskCtl(null); return; }
-  const all = indSeries();
-  renderRiskCtl(all.risk);
-  const S1 = all[S.indPick] || all.z;
-  if(!S1 || !S1.v) return;
-
-  const idx = S1.v.map((v,i)=>i).filter(i=>S1.v[i]!=null && isFinite(S1.v[i]));
-  if(idx.length<10) return;
-  const v = idx.map(i=>S1.v[i]);
-  const pxs = S1.px ? idx.map(i=>S1.px[i]) : null;
+  g.clearRect(0,0,c.width,c.height);
+  const G = zGeomCache = zGeom();
+  if(!G){ renderRiskCtl(null); renderZCross(); return; }
+  const { S1, idx, N, n, i0, i1, mn, mx, SC, trr, tmx, W, H, pad, PW, x, y } = G;
+  renderRiskCtl(S1);
 
   const css = getComputedStyle(document.documentElement);
   const dim=css.getPropertyValue('--ink-dim').trim(), rule=css.getPropertyValue('--rule').trim();
   const ink=css.getPropertyValue('--ink').trim();
   const hot=css.getPropertyValue('--hot').trim(), short=css.getPropertyValue('--short').trim();
   const SUBC = [hot, short, css.getPropertyValue('--long').trim()];
-
-  const n = v.length;
-  // композитът е средна от съставките си, тоест винаги по-тесен от тях: ако
-  // скалата се вземе само от него, пунктираните съставки излизат извън платното
-  const span = S1.sub
-    ? [...v, ...S1.sub.flatMap(sb=>idx.map(i=>sb.v[i]).filter(q=>q!=null && isFinite(q)))]
-    : v;
-  const mn = Math.min(...span) - Math.abs(Math.min(...span))*0.05 - 0.05;
-  const mx = Math.max(...span) + Math.abs(Math.max(...span))*0.05 + 0.05;
-  const SC = indScale(S1, mn, mx);
-  const tmn = SC.f(mn), tmx = SC.f(mx), trr = (tmx-tmn) || 1;
-  const x = i => pad.l + i*(W-pad.l-pad.r)/(n-1);
-  const y = q => pad.t + (tmx-SC.f(q))/trr*(H-pad.t-pad.b);
 
   g.font = '400 19px '+css.getPropertyValue('--num');
   const lbl = q => Math.abs(q)>=100 ? q.toFixed(0) : Math.abs(q)>=10 ? q.toFixed(1) : q.toFixed(2);
@@ -2620,8 +2641,8 @@ function drawZ(){
   let marks = [];
   if(S.indPick==='z'){
     const hiZ = chain.q85, loZ = Math.min(0, chain.q15);
-    g.fillStyle = hot+'22';   g.fillRect(pad.l, y(mx),  W-pad.l-pad.r, Math.max(0, y(hiZ)-y(mx)));
-    g.fillStyle = short+'22'; g.fillRect(pad.l, y(loZ), W-pad.l-pad.r, Math.max(0, y(mn)-y(loZ)));
+    g.fillStyle = hot+'22';   g.fillRect(pad.l, y(mx),  PW, Math.max(0, y(hiZ)-y(mx)));
+    g.fillStyle = short+'22'; g.fillRect(pad.l, y(loZ), PW, Math.max(0, y(mn)-y(loZ)));
     marks = [loZ, hiZ];
   } else {
     marks = (S1.ref||[]).filter(q=>q>mn && q<mx);
@@ -2647,15 +2668,19 @@ function drawZ(){
   if(!S.indLog)
     [mn,mx].forEach(q=>g.fillText(lbl(q), W-pad.r+10, y(q)+ (q===mx?12:-2)));
 
-  // цена със собствена логаритмична скала
-  if(pxs && pxs.some(q=>q!=null)){
-    const fin = pxs.filter(q=>q!=null && q>0);
-    const pmn=Math.log(Math.min(...fin)), pmx=Math.log(Math.max(...fin)), pr=(pmx-pmn)||1;
-    const py = q => pad.t + (pmx-Math.log(q))/pr*(H-pad.t-pad.b);
-    g.beginPath(); let st=false;
-    for(let i=0;i<n;i++){ const q=pxs[i]; if(q==null||q<=0) continue;
-      st ? g.lineTo(x(i),py(q)) : (g.moveTo(x(i),py(q)), st=true); }
-    g.strokeStyle = dim; g.lineWidth=1.5; g.stroke();
+  // цена със собствена логаритмична скала, също само по видимото
+  let py = null;
+  if(S1.px){
+    const fin = [];
+    for(let i=i0;i<=i1;i++){ const q=S1.px[idx[i]]; if(q!=null && q>0) fin.push(q); }
+    if(fin.length>1){
+      const pmn=Math.log(Math.min(...fin)), pmx=Math.log(Math.max(...fin)), pr=(pmx-pmn)||1;
+      py = q => pad.t + (pmx-Math.log(q))/pr*(H-pad.t-pad.b);
+      g.beginPath(); let st=false;
+      for(let i=i0;i<=i1;i++){ const q=S1.px[idx[i]]; if(q==null||q<=0) continue;
+        st ? g.lineTo(x(i),py(q)) : (g.moveTo(x(i),py(q)), st=true); }
+      g.strokeStyle = dim; g.lineWidth=1.5; g.stroke();
+    }
   }
 
   // съставките зад композита — за да се вижда какво точно го движи
@@ -2664,7 +2689,7 @@ function drawZ(){
     S1.sub.forEach((sb,k)=>{
       g.strokeStyle = SUBC[k%3];
       g.beginPath(); let st=false;
-      for(let i=0;i<n;i++){ const q = sb.v[idx[i]];
+      for(let i=i0;i<=i1;i++){ const q = sb.v[idx[i]];
         if(q==null || !isFinite(q)) continue;
         st ? g.lineTo(x(i),y(q)) : (g.moveTo(x(i),y(q)), st=true); }
       g.stroke();
@@ -2673,24 +2698,124 @@ function drawZ(){
   }
 
   g.beginPath();
-  for(let i=0;i<n;i++) i?g.lineTo(x(i),y(v[i])):g.moveTo(x(i),y(v[i]));
+  for(let i=i0;i<=i1;i++){ const q=S1.v[idx[i]]; i===i0?g.moveTo(x(i),y(q)):g.lineTo(x(i),y(q)); }
   g.strokeStyle = ink; g.lineWidth=2; g.stroke();
 
-  g.beginPath(); g.arc(x(n-1), y(v[n-1]), 5, 0, Math.PI*2);
-  g.fillStyle = ink; g.fill();
+  // точката е последната изобщо, не последната видима — иначе при изместен
+  // прозорец ще изглежда, че днешната стойност е някъде в миналото
+  if(i1===N-1){
+    g.beginPath(); g.arc(x(N-1), y(S1.v[idx[N-1]]), 5, 0, Math.PI*2);
+    g.fillStyle = ink; g.fill();
+  }
+
+  // маркер
+  if(zMark){
+    const k = Math.max(i0, Math.min(i1, zMark.i)), q = S1.v[idx[k]];
+    g.strokeStyle = hot; g.lineWidth = 1; g.setLineDash([4,4]);
+    g.beginPath(); g.moveTo(x(k), pad.t); g.lineTo(x(k), H-pad.b); g.stroke();
+    g.setLineDash([]);
+    g.beginPath(); g.arc(x(k), y(q), 4.5, 0, Math.PI*2); g.fillStyle = hot; g.fill();
+    const pq = S1.px ? S1.px[idx[k]] : null;
+    if(py && pq!=null && pq>0){
+      g.beginPath(); g.arc(x(k), py(pq), 3.5, 0, Math.PI*2);
+      g.strokeStyle = hot; g.lineWidth = 1.5; g.stroke();
+    }
+  }
 
   g.fillStyle = dim;
-  const T = S1.t;
-  const yr = i => new Date(T[idx[i]]).getFullYear();
-  g.fillText(yr(0), pad.l, H-6);
-  const tx = String(yr(n-1));
+  const yr = i => new Date(S1.t[idx[i]]).getFullYear();
+  g.fillText(yr(i0), pad.l, H-6);
+  const tx = String(yr(i1));
   g.fillText(tx, W-pad.r-g.measureText(tx).width, H-6);
 
   const note = document.getElementById('ind-scalenote');
-  if(note) note.textContent = S.indLog ? (SC.name||'лог') : 'линейна скала';
+  if(note) note.textContent = (S.indLog ? (SC.name||'лог') : 'линейна скала')
+                            + (n<N ? ` · ${n} от ${N} дни` : '');
+  renderZCross();
 }
 
+// индекс на деня, отстоящ на толкова дни напред; null, ако няма такъв в редицата
+function zAhead(t, i, days){
+  const want = t[i] + days*864e5;
+  let lo=i, hi=t.length-1;
+  if(t[hi] < want) return null;
+  while(lo<hi){ const m=(lo+hi)>>1; t[m]<want ? lo=m+1 : hi=m; }
+  return lo;
+}
+
+function renderZCross(){
+  const box = document.getElementById('ind-cross'); if(!box) return;
+  const G = zGeomCache;
+  if(!G){ box.innerHTML=''; return; }
+  const zoomed = G.n < G.N;
+  const zres = zoomed
+    ? `Показани <b>${G.n}</b> от ${G.N} дни · <a href="#" id="z-zreset" style="color:var(--short)">целия обхват</a>`
+    : '';
+  if(!zMark){
+    box.innerHTML = zres ? `<div class="note" style="margin:0">${zres}</div>`
+      : (S.zCur ? '<div class="note" style="margin:0">Докосни графиката, за да отчетеш деня.</div>' : '');
+    return;
+  }
+  const S1 = G.S1;
+  const k = Math.max(G.i0, Math.min(G.i1, zMark.i));
+  const src = G.idx[k];
+  const val = S1.v[src], px = S1.px ? S1.px[src] : null;
+  const when = new Date(S1.t[src]).toLocaleDateString('bg-BG',{day:'numeric',month:'short',year:'numeric'});
+  const dp = q => Math.abs(q)>=100 ? fmt(q,1) : Math.abs(q)>=10 ? fmt(q,2) : fmt(q,3);
+
+  const cs = getComputedStyle(document.documentElement);
+  const SUBC = ['--hot','--short','--long'].map(q=>cs.getPropertyValue(q).trim());
+  const subs = S1.sub ? S1.sub.map((sb,j)=>{ const q = sb.v[src];
+    return `<div><b>${q==null?'—':fmt(q*100,0)+'%'}</b><span><span style="display:inline-block;`
+         + `width:7px;height:2px;background:${SUBC[j%3]};vertical-align:middle;margin-right:4px"></span>`
+         + `${sb.name}</span></div>`; }).join('') : '';
+
+  // какво е последвало — има смисъл само когато показателят не знае бъдещето си
+  let fwd = '';
+  if(S1.px){
+    const j = zAhead(S1.t, src, 365);
+    const a = S1.px[src], bq = j!=null ? S1.px[j] : null;
+    if(a && bq){
+      const ch = (bq/a-1)*100;
+      fwd = `<div><b class="${ch>=0?'pos':'neg'}">${pct(ch)}</b><span>цената година по-късно</span></div>`;
+    } else {
+      fwd = `<div><b>—</b><span>няма още година след този ден</span></div>`;
+    }
+  }
+
+  box.innerHTML = `<div class="mbox">
+    <div><b>${when}</b><span>ден ${src+1} от ${S1.t.length}</span></div>
+    <div><b>${dp(val)}</b><span>${S1.name}</span></div>
+    ${px!=null?`<div><b>${money(px, px<10?4:2)}</b><span>цена в този ден</span></div>`:''}
+    ${subs}${fwd}
+    <div class="act">
+      <button id="z-mclear">Махни маркера</button>
+      ${zoomed?'<button id="z-zreset2">Целия обхват</button>':''}
+    </div>
+  </div>${zres?`<div class="note" style="margin:6px 0 0">${zres}</div>`:''}`;
+}
+
+chartGestures({
+  cv: document.getElementById('zchart'),
+  ready: () => !!zGeomCache,
+  count: () => zGeomCache ? zGeomCache.N : 0,
+  getView: () => zView,
+  setView: v => { zView = v; },
+  geom: () => zGeomCache,
+  cursor: () => S.zCur,
+  mark: (i,p) => { zMark = { i, p }; },
+  redraw: () => drawZ(),
+  reset: () => { zMark=null; zView=null; drawZ(); },
+  minSpan: 20
+});
+
+document.getElementById('ind-cross').addEventListener('click', e=>{
+  if(e.target.id==='z-mclear'){ zMark=null; drawZ(); }
+  if(e.target.id==='z-zreset' || e.target.id==='z-zreset2'){ e.preventDefault(); zView=null; drawZ(); }
+});
+
 async function loadInd(){
+  zView = null; zMark = null;
   const tech = document.getElementById('ind-tech'), ch = document.getElementById('ind-chain');
   tech.innerHTML = '<div class="empty">Изчислява…</div>';
 
@@ -2856,6 +2981,7 @@ document.getElementById('ind-pick').addEventListener('click', e=>{
   const b = e.target.closest('button[data-pick]'); if(!b) return;
   S.indPick = b.dataset.pick;
   document.querySelectorAll('#ind-pick button').forEach(x=>x.setAttribute('aria-pressed', x===b));
+  zView = null; zMark = null;
   renderRiskCtl(null); drawZ();
 });
 document.getElementById('ind-risk').addEventListener('click', e=>{
@@ -2864,6 +2990,12 @@ document.getElementById('ind-risk').addEventListener('click', e=>{
   loadInd();
 });
 document.getElementById('z-mode').addEventListener('click', e=>{
+  if(e.target.id==='ind-cur'){
+    S.zCur = !S.zCur;
+    e.target.setAttribute('aria-pressed', S.zCur);
+    if(!S.zCur) zMark = null;
+    drawZ(); return;
+  }
   if(e.target.id==='ind-log'){
     S.indLog = !S.indLog;
     e.target.setAttribute('aria-pressed', S.indLog);
@@ -4635,7 +4767,7 @@ const LQ_NB = 140;       // ценови кошчета
 
 let lq = null;
 S.lqInt='1h'; S.lqLen=400; S.lqMix='retail'; S.lqTouch=true; S.lqDecay=true;
-S.lqHL=60; S.lqK=6; S.lqCur=false;   // двата плъзгача тръгват от средата на обхвата си
+S.lqHL=120; S.lqK=6; S.lqCur=false;   // двата плъзгача тръгват от средата на обхвата си
 let lqMark = null;
 S.lqSide = true;   // разрез отстрани, споделящ ценовата ос   // {i, p} — време и цена под пръста
 let lqView = null;   // {i0, i1} — видим отрез при увеличение
