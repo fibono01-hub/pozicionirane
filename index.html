@@ -474,6 +474,13 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
     </div>
     <div id="ind-chain"></div>
     <div class="chips" id="ind-pick"></div>
+    <div id="ind-risk" hidden>
+      <div class="controls" style="margin:4px 0 10px">
+        <button data-rm="pit" aria-pressed="true">Точка във времето</button>
+        <button data-rm="full" aria-pressed="false">Цяла история</button>
+      </div>
+      <p class="note" id="ind-risknote" style="margin-top:0"></p>
+    </div>
     <canvas id="zchart" width="1400" height="380"></canvas>
     <div class="legend">
       <span><i style="background:var(--ink)"></i>избраният индикатор</span>
@@ -941,7 +948,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
 </div>
 
 <footer>
-  <span style="font-family:var(--mono);color:var(--ink)">версия 59</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
+  <span style="font-family:var(--mono);color:var(--ink)">версия 60</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
   Фъндингът и откритият интерес идват от публичните API-та на Binance, Bybit, OKX и Hyperliquid.
   Ако някоя борса покаже грешка, най-честата причина е блокиране по регион или ограничение на заявките — изчакай минута и обнови.
 </footer>
@@ -2388,6 +2395,70 @@ async function loadChain(){
 }
 
 // исторически серии за всеки индикатор, върху дневната цена от Coin Metrics
+S.riskMode = 'pit';   // pit = точка във времето, full = цяла история
+
+// Персентил спрямо САМО предходната история: за всеки ден стойността се подрежда
+// единствено срещу дните преди него. Никоя точка не знае бъдещето си. Сортираният
+// списък се поддържа инкрементално (двоично търсене + вмъкване), за да не е квадратично.
+function pctExpand(x){
+  const out = new Array(x.length).fill(null), srt = [];
+  for(let i=0;i<x.length;i++){
+    const v = x[i];
+    if(v==null || !isFinite(v)) continue;
+    let a=0, b=srt.length;
+    while(a<b){ const m=(a+b)>>1; srt[m]<v ? a=m+1 : b=m; }      // брой строго по-малки
+    let cc=a, d=srt.length;
+    while(cc<d){ const m=(cc+d)>>1; srt[m]<=v ? cc=m+1 : d=m; }  // брой по-малки или равни
+    const prev = srt.length;
+    out[i] = prev>0 ? (a+cc)/2/prev : null;   // среден ранг при равни стойности
+    srt.splice(a,0,v);
+  }
+  return out;
+}
+
+// Персентил спрямо цялата история, включително бъдещето спрямо всяка точка.
+// Така се строят повечето публикувани „риск“ индекси — и точно това ги прави
+// подозрително точни назад във времето.
+function pctFull(x){
+  const fin = x.filter(v=>v!=null && isFinite(v)).slice().sort((a,b)=>a-b);
+  const n = fin.length;
+  if(n<2) return x.map(()=>null);
+  return x.map(v=>{
+    if(v==null || !isFinite(v)) return null;
+    let a=0,b=n; while(a<b){ const m=(a+b)>>1; fin[m]<v ? a=m+1 : b=m; }
+    let cc=a,d=n; while(cc<d){ const m=(cc+d)>>1; fin[m]<=v ? cc=m+1 : d=m; }
+    return (a+cc-1)/2/(n-1);
+  });
+}
+
+const RISK_MINH = 365;   // под година предходна история персентилът не значи нищо
+let riskMemo = null;
+
+// Съставният риск е НАШ, не възпроизвеждане на чужд индекс: формулата на
+// публикуваните не е оповестена. Три съставки, всяка превърната в персентил:
+//   разтегнатост спрямо 200-дневната, MVRV, и разстояние до историческия връх.
+function riskCalc(c, s200, mvrv, mode, sym){
+  const key = mode+'|'+sym+'|'+c.length+'|'+(c[c.length-1]||0);
+  if(riskMemo && riskMemo.key===key) return riskMemo.val;
+  const ma = c.map((q,i)=>(s200[i] && isFinite(q)) ? q/s200[i] : null);
+  const dd = (()=>{ const o=new Array(c.length).fill(null); let ath=-Infinity;
+    for(let i=0;i<c.length;i++){ const q=c[i];
+      if(!isFinite(q)) continue; if(q>ath) ath=q;
+      o[i] = ath>0 ? q/ath : null; } return o; })();
+  const P = mode==='full' ? pctFull : pctExpand;
+  const names = ['Цена / 200-дневна', 'MVRV', 'Цена / исторически връх'];
+  const mask = v => v.map((q,i)=> (mode!=='full' && i<RISK_MINH) ? null : q);
+  const comps = [mask(P(ma)), mask(P(mvrv)), mask(P(dd))];
+  const v = c.map((_,i)=>{
+    let t=0, k=0;
+    for(const cp of comps){ const q=cp[i]; if(q!=null && isFinite(q)){ t+=q; k++; } }
+    return k===comps.length ? t/comps.length : null;
+  });
+  const val = { v, sub: comps.map((cv,i)=>({ v:cv, name:names[i] })) };
+  riskMemo = { key, val };
+  return val;
+}
+
 function indSeries(){
   if(!chain || !chain.all || !chain.all.px) return {};
   const t = chain.all.t, px = chain.all.px;
@@ -2441,6 +2512,8 @@ function indSeries(){
     return out;
   })();
 
+  const RK = riskCalc(c, s200, chain.mvrv, S.riskMode, S.sym);
+
   return {
     z:      { t:chain.t, v:chain.z, px:chain.px, name:'MVRV Z-score', bands:true, signed:true },
     mvrv:   { t, v:chain.mvrv, px, name:'MVRV съотношение', ref:[1] },
@@ -2455,6 +2528,7 @@ function indSeries(){
     roi2y:  { t, v:roi(730),  px, name:'ROI 2 години',  ref:[0], signed:true },
     roi4y:  { t, v:roi(1460), px, name:'ROI 4 години',  ref:[0], signed:true },
     ...(roiHalv ? { roiH:{ t, v:roiHalv, px, name:'ROI от халвинга', ref:[0], signed:true } } : {}),
+    risk:   { t, v:RK.v, px, name:'Риск (съставен, наш)', ref:[0.1,0.5,0.9], sub:RK.sub },
   };
 }
 
@@ -2480,12 +2554,38 @@ function indScale(series, mn, mx){
   return { f, g, name:'лог' };
 }
 
+function renderRiskCtl(series){
+  const box = document.getElementById('ind-risk'); if(!box) return;
+  const on = S.indPick==='risk';
+  box.hidden = !on;
+  if(!on) return;
+  box.querySelectorAll('button[data-rm]').forEach(b=>
+    b.setAttribute('aria-pressed', b.dataset.rm===S.riskMode));
+  const note = document.getElementById('ind-risknote'); if(!note) return;
+  const lastOf = a => { if(!a) return null;
+    for(let k=a.length-1;k>=0;k--) if(a[k]!=null && isFinite(a[k])) return a[k]; return null; };
+  const head = S.riskMode==='pit'
+    ? '<b>Точка във времето.</b> Всеки ден е подреден само срещу дните преди него, затова въпросът „какво следваше, когато рискът беше нисък“ има смисъл. Първата година е празна — там няма достатъчно предходна история.'
+    : '<b>Цяла история.</b> Всеки ден е подреден срещу цялата история, включително бъдещето си. Така се строят публикуваните индекси — и точно затова миналите дъна изглеждат уловени на косъм. Сравни двата режима: разликата е колко ти ласкае показателят.';
+  const cs = getComputedStyle(document.documentElement);
+  const SUBC = ['--hot','--short','--long'].map(k=>cs.getPropertyValue(k).trim());
+  const parts = series && series.sub
+    ? series.sub.map((sb,k)=>{ const q=lastOf(sb.v);
+        return `<span style="display:inline-block;width:7px;height:2px;background:${SUBC[k]};`
+             + `vertical-align:middle;margin-right:4px"></span>${sb.name}: `
+             + `${q==null?'—':fmt(q*100,0)+'%'}`; }).join(' · ')
+    : null;
+  note.innerHTML = head + (parts
+    ? `<br>Пунктираните линии са съставките, плътната е средната от трите. Днес — ${parts}.` : '');
+}
+
 function drawZ(){
   const c = document.getElementById('zchart'), g = c.getContext('2d');
   const W=c.width, H=c.height, pad={l:8,r:70,t:12,b:26};
   g.clearRect(0,0,W,H);
-  if(!chain) return;
+  if(!chain){ renderRiskCtl(null); return; }
   const all = indSeries();
+  renderRiskCtl(all.risk);
   const S1 = all[S.indPick] || all.z;
   if(!S1 || !S1.v) return;
 
@@ -2498,10 +2598,16 @@ function drawZ(){
   const dim=css.getPropertyValue('--ink-dim').trim(), rule=css.getPropertyValue('--rule').trim();
   const ink=css.getPropertyValue('--ink').trim();
   const hot=css.getPropertyValue('--hot').trim(), short=css.getPropertyValue('--short').trim();
+  const SUBC = [hot, short, css.getPropertyValue('--long').trim()];
 
   const n = v.length;
-  const mn = Math.min(...v) - Math.abs(Math.min(...v))*0.05 - 0.05;
-  const mx = Math.max(...v) + Math.abs(Math.max(...v))*0.05 + 0.05;
+  // композитът е средна от съставките си, тоест винаги по-тесен от тях: ако
+  // скалата се вземе само от него, пунктираните съставки излизат извън платното
+  const span = S1.sub
+    ? [...v, ...S1.sub.flatMap(sb=>idx.map(i=>sb.v[i]).filter(q=>q!=null && isFinite(q)))]
+    : v;
+  const mn = Math.min(...span) - Math.abs(Math.min(...span))*0.05 - 0.05;
+  const mx = Math.max(...span) + Math.abs(Math.max(...span))*0.05 + 0.05;
   const SC = indScale(S1, mn, mx);
   const tmn = SC.f(mn), tmx = SC.f(mx), trr = (tmx-tmn) || 1;
   const x = i => pad.l + i*(W-pad.l-pad.r)/(n-1);
@@ -2550,6 +2656,20 @@ function drawZ(){
     for(let i=0;i<n;i++){ const q=pxs[i]; if(q==null||q<=0) continue;
       st ? g.lineTo(x(i),py(q)) : (g.moveTo(x(i),py(q)), st=true); }
     g.strokeStyle = dim; g.lineWidth=1.5; g.stroke();
+  }
+
+  // съставките зад композита — за да се вижда какво точно го движи
+  if(S1.sub){
+    g.lineWidth = 1; g.setLineDash([3,3]); g.globalAlpha = 0.5;
+    S1.sub.forEach((sb,k)=>{
+      g.strokeStyle = SUBC[k%3];
+      g.beginPath(); let st=false;
+      for(let i=0;i<n;i++){ const q = sb.v[idx[i]];
+        if(q==null || !isFinite(q)) continue;
+        st ? g.lineTo(x(i),y(q)) : (g.moveTo(x(i),y(q)), st=true); }
+      g.stroke();
+    });
+    g.setLineDash([]); g.globalAlpha = 1;
   }
 
   g.beginPath();
@@ -2697,7 +2817,18 @@ async function loadInd(){
           : nu<0.25 ? 'В долната зона — пазарът е едва на плюс, малко натрупана печалба за прибиране.'
           : nu<0.5  ? 'В средната зона — умерена нереализирана печалба.'
           : nu<0.75 ? 'В горната зона — голяма печалба на хартия, расте мотивът за разпределяне.'
-          :           'Над 0,75 — исторически рядка зона на еуфория.'); })();
+          :           'Над 0,75 — исторически рядка зона на еуфория.'); })()
+      + (()=>{ const rk = indSeries().risk;
+        const q = (()=>{ const a = rk && rk.v; if(!a) return null;
+          for(let k=a.length-1;k>=0;k--) if(a[k]!=null && isFinite(a[k])) return a[k]; return null; })();
+        const md = S.riskMode==='pit' ? ' Режим: точка във времето.' : ' Режим: цяла история — с поглед в бъдещето.';
+        return gauge('Риск (съставен, наш)', q, '', 0, 1, [{w:20,c:T},{w:60,c:N},{w:20,c:R}],
+          (q==null ? ''
+          : q<0.1  ? 'Под 0,10 — и трите съставки са в дъното на собствената си история. Такива дни са били малко и близо до циклични дъна, но зад това стоят три-четири цикъла — извадка за наблюдение, не за правило.'
+          : q<0.3  ? 'В долната трета. Исторически по-често начало, отколкото край на цикъл, но извадката е малка.'
+          : q<0.7  ? 'В средния диапазон. Тук показателят не казва нищо насочено.'
+          : q<0.9  ? 'В горната трета — трите съставки се събират в по-горещата част от историята.'
+          :          'Над 0,90 — крайност по всички съставки едновременно.') + md); })();
     renderPick(); drawZ();
   }catch(e){
     ch.innerHTML = `<div class="ind na"><div class="head"><span>MVRV</span><b>—</b></div>
@@ -2714,13 +2845,23 @@ document.getElementById('ind-help').innerHTML = `
   <p><b>RSI</b> измерва скоростта на движението, не посоката. Крайните стойности не са самостоятелен сигнал за обрат — при силен тренд RSI може да стои над 70 със седмици.</p>
   <p><b>ROI</b> е възвръщаемостта от покупка преди определено време и държане до съответния ден. Прозорецът е плъзгащ, не от фиксирана дата: всяка точка на графиката отговаря на въпроса „колко би спечелил, ако беше купил точно толкова време преди този ден". Затова ROI 4 години се чете като дали пълен цикъл държане се е изплатило. При биткойн този показател исторически не е слизал под нулата, но зад това стоят три-четири цикъла — извадка, твърде малка за правило.</p>
   <p><b>ROI от халвинга</b> се нулира при всеки халвинг и показва докъде е стигнал текущият цикъл спрямо предишните на същия етап. Само за биткойн — при другите активи халвинг няма. Сравнението между цикли е съпоставяне на различни пазарни условия, лихвена среда и размер на пазара, тоест прилика във формата не е причинна връзка.</p>
+  <p><b>Риск (съставен, наш).</b> Това не е индексът „on-chain risk“, който се цитира в твитове — неговата формула не е публикувана и не може да се възпроизведе. Това е наша мярка от три съставки: цена спрямо 200-дневната средна, MVRV, и цена спрямо историческия връх. Всяка се превръща в персентил спрямо историята на самия актив, после се взема простата средна. Скалата е 0 до 1, тоест 0,17 значи „в долните 17% от своята история“.</p>
+  <p><b>Трите съставки не са независими.</b> И трите имат цената в числителя си, така че се движат заедно. Средната от тях е по-гладка от всяка поотделно, но това е заглаждане, не потвърждение от три посоки. Пунктираните линии на графиката са самите съставки — ако се движат в синхрон, значи композитът не носи повече информация от която и да е от тях.</p>
+  <p><b>Защо има два режима на нормиране.</b> „Цяла история“ подрежда всеки ден срещу всички дни, включително тези след него. Това е удобно и е начинът, по който обикновено се строят такива индекси, но означава, че стойността за 2018 година е изчислена със знание за 2021. Оттам идва и кръговостта: ако скалата е построена така, че нулата да отговаря на миналите дъна, то „дъното идва, когато рискът е под 0,1“ е вярно по конструкция, а не защото показателят предсказва нещо. „Точка във времето“ подрежда всеки ден само срещу предходните — това е стойността, която реално би могъл да видиш на екрана си в онзи ден. Включи двата режима един след друг и виж разликата: тя е мярката за това колко ти ласкае обичайната конструкция.</p>
+  <p><b>Една особеност на третата съставка.</b> Цена спрямо историческия връх е равна на точно 1 през всеки ден, в който се прави нов връх — а това са много дни наведнъж. Персентилът раздава на цялата тази група един и същ среден ранг, затова „на исторически връх“ никога не чете 100% риск, а около 80–90%. Това не е грешка: да си на връх е обичайно състояние по време на възход и не бива да се брои за крайност. Но означава, че тази съставка е стъпаловидна, не гладка — ще го видиш по пунктираната ѝ линия.</p>
+  <p>Какво показателят <em>не</em> е: вероятност. Няма дефиниция на събитие, нито проверка извън извадката. „Бил е под 0,1 около дъна“ описва три-четири случая в една история — това е наблюдение, не честота, и със сигурност не прогноза.</p>
   <p>Данните за MVRV идват от безплатния достъп на Coin Metrics и са позволени за нетърговска употреба. Обновяват се веднъж дневно, така че последната стойност може да изостава с часове.</p>`;
 
 document.getElementById('ind-pick').addEventListener('click', e=>{
   const b = e.target.closest('button[data-pick]'); if(!b) return;
   S.indPick = b.dataset.pick;
   document.querySelectorAll('#ind-pick button').forEach(x=>x.setAttribute('aria-pressed', x===b));
-  drawZ();
+  renderRiskCtl(null); drawZ();
+});
+document.getElementById('ind-risk').addEventListener('click', e=>{
+  const b = e.target.closest('button[data-rm]'); if(!b) return;
+  S.riskMode = b.dataset.rm;
+  loadInd();
 });
 document.getElementById('z-mode').addEventListener('click', e=>{
   if(e.target.id==='ind-log'){
