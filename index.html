@@ -427,6 +427,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
     <b style="color:var(--ink);font-weight:500">AMA</b> мени теглото според ефективността на движението — лепне за цената при тренд, почти замръзва при зигзаг.
     <b style="color:var(--ink);font-weight:500">AB филтърът</b> следи едновременно нивото и скоростта и екстраполира с нея, затова завива по-рано от EMA, но презвънява след резки движения.
     <b style="color:var(--ink);font-weight:500">AMA−SMA</b> и <b style="color:var(--ink);font-weight:500">AMA−EMA</b> дават разликата между адаптивната и класическата средна в процент. Отиват в долния панел, защото са осцилатори около нулата: положителна стойност значи, че адаптивната е изпреварила, тоест движението е ефективно.
+    <b style="color:var(--ink);font-weight:500">Цена−SMA</b> и <b style="color:var(--ink);font-weight:500">Цена−EMA</b> мерят колко процента е самата цена над или под средната си. Също са осцилатори около нулата. При 200 дни това е Mayer multiple, изразен в проценти: +20% тук значи 1,20 по Mayer. Удобни са, защото разстоянието от средната се чете като число, а не на око по графиката.
   </p>
   <div class="chips" id="ma-chips"></div>
   <div class="addma">
@@ -437,6 +438,8 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
       <option value="ab">AB филтър</option>
       <option value="amasma">AMA − SMA</option>
       <option value="amaema">AMA − EMA</option>
+      <option value="pxsma">Цена − SMA</option>
+      <option value="pxema">Цена − EMA</option>
     </select>
     <input id="ma-len" type="number" inputmode="numeric" min="2" max="400" placeholder="период">
     <select id="ma-unit">
@@ -951,7 +954,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
 </div>
 
 <footer>
-  <span style="font-family:var(--mono);color:var(--ink)">версия 62</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
+  <span style="font-family:var(--mono);color:var(--ink)">версия 63</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
   Фъндингът и откритият интерес идват от публичните API-та на Binance, Bybit, OKX и Hyperliquid.
   Ако някоя борса покаже грешка, най-честата причина е блокиране по регион или ограничение на заявките — изчакай минута и обнови.
 </footer>
@@ -1691,8 +1694,12 @@ const MAFN = {
   sma, ema, ama:kama, ab:abfilt,
   amasma: (a,n)=> relDiff(kama(a,n), sma(a,n)),
   amaema: (a,n)=> relDiff(kama(a,n), ema(a,n)),
+  // отклонението на самата цена от средната си: същата сметка, но бързият член
+  // е цената, а не адаптивната средна
+  pxsma:  (a,n)=> relDiff(a, sma(a,n)),
+  pxema:  (a,n)=> relDiff(a, ema(a,n)),
 };
-const OSC = ['amasma','amaema'];
+const OSC = ['amasma','amaema','pxsma','pxema'];
 
 // пренася средна от собствената ѝ времева рамка върху свещите на графиката
 function alignMA(rt, rv, ct){
@@ -1785,7 +1792,8 @@ function activeMAs(){
     }
     const vals = raw ? alignMA(src.t, raw, price.t) : new Array(price.t.length).fill(null);
     const dm = dv===1 ? ' ′' : dv===2 ? ' ″' : '';
-    const TN = {sma:'SMA', ema:'EMA', ama:'AMA', ab:'AB', amasma:'AMA−SMA', amaema:'AMA−EMA'};
+    const TN = {sma:'SMA', ema:'EMA', ama:'AMA', ab:'AB', amasma:'AMA−SMA', amaema:'AMA−EMA',
+                pxsma:'Цена−SMA', pxema:'Цена−EMA'};
     return { ...m, deriv:dv, osc:OSC.includes(m.t), label:`${TN[m.t]||m.t} ${m.n}${UNIT[m.u]}${(k!==1)?' ×'+k:''}${dm}`,
              color: MA_COLORS[i % MA_COLORS.length], vals, missing: !src };
   }).concat(activeLevels());
@@ -1965,7 +1973,7 @@ function renderOC(){
 function renderChips(){
   document.getElementById('ma-chips').innerHTML = S.mas.map((m,i)=>
     `<button data-ma="${i}" aria-pressed="${m.on}">
-       <i style="background:${MA_COLORS[i%MA_COLORS.length]}"></i>${({sma:'SMA',ema:'EMA',ama:'AMA',ab:'AB',amasma:'AMA−SMA',amaema:'AMA−EMA'})[m.t]||m.t} ${m.n}${UNIT[m.u]}${(m.k&&m.k!==1)?' ×'+m.k:''}${m.d===1?' ′':m.d===2?' ″':''}
+       <i style="background:${MA_COLORS[i%MA_COLORS.length]}"></i>${({sma:'SMA',ema:'EMA',ama:'AMA',ab:'AB',amasma:'AMA−SMA',amaema:'AMA−EMA',pxsma:'Цена−SMA',pxema:'Цена−EMA'})[m.t]||m.t} ${m.n}${UNIT[m.u]}${(m.k&&m.k!==1)?' ×'+m.k:''}${m.d===1?' ′':m.d===2?' ″':''}
        <span class="rm" data-rm="${i}">×</span></button>`).join('');
 }
 
