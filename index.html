@@ -623,6 +623,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
     <button data-mi="1w" aria-pressed="false">Седмично</button>
     <button id="m-log" aria-pressed="false">Лог</button>
     <button id="m-cur" aria-pressed="false">Маркер</button>
+    <button id="m-loupe" aria-pressed="true">Лупа</button>
   </div>
 
   <canvas id="mchart" width="1400" height="660"></canvas>
@@ -950,7 +951,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
 </div>
 
 <footer>
-  <span style="font-family:var(--mono);color:var(--ink)">версия 61</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
+  <span style="font-family:var(--mono);color:var(--ink)">версия 62</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
   Фъндингът и откритият интерес идват от публичните API-та на Binance, Bybit, OKX и Hyperliquid.
   Ако някоя борса покаже грешка, най-честата причина е блокиране по регион или ограничение на заявките — изчакай минута и обнови.
 </footer>
@@ -3843,8 +3844,12 @@ let meas = null;              // {t, o, h, l, c}
 let mView = null;             // {i0,i1} — видим отрез
 let mMark = null;             // {i, p} — маркер
 let sel = null;               // текущият правоъгълник {i0,i1,p0,p1}
+let mFocus = null;            // {cx,cy} в координати на платното — какво гледа лупата
+let mGrab = null;             // {ki,kp} — кой ъгъл се дорегулира в момента
+// четирите ъгъла на правоъгълника се изразяват с двата ключа по време и двата по цена
+const MCORNERS = [['i0','p0'],['i1','p0'],['i0','p1'],['i1','p1']];
 let saved = [];               // запазените измервания
-S.mInt = '1d'; S.mDays = 365; S.mLog = false;
+S.mInt = '1d'; S.mDays = 365; S.mLog = false; S.mLoupe = true;
 
 async function loadMeas(){
   const bars = S.mDays==='max' ? 1000
@@ -3894,6 +3899,87 @@ function mGeom(){
     ix: cx => Math.max(i0, Math.min(i1, i0+Math.floor((cx-pad.l)/PW*n))),
     invX: cx => Math.max(i0, Math.min(i1, i0+Math.floor((cx-pad.l)/PW*n)))
   };
+}
+
+// Лупа. На телефон пръстът закрива точно мястото, което наместваш, затова
+// увеличеното се рисува в отсрещния ъгъл. Рисува се в същото платно — без второ
+// DOM ниво, със същата резолюция, и се мащабира заедно с всичко останало.
+function drawLoupe(g, G, css){
+  if(!S.mLoupe || !mFocus || !meas) return;
+  const M = 4, LR = 150;                       // увеличение и радиус в координати на платното
+  const { W, H, pad, x, y } = G;
+  // платното е 1400x660, а на екрана е ~398x290: водоравно е свито повече, отколкото
+  // отвесно. Кръг в координатите на платното излиза елипса на екрана, затова
+  // отвесният радиус се коригира с отношението на двата мащаба.
+  const rct = G.c.getBoundingClientRect();
+  const ar = (rct.width && rct.height) ? (rct.width/W)/(rct.height/H) : 1;
+  const RX = LR, RY = LR*ar;
+  const inX = Math.max(pad.l, Math.min(W-pad.r, mFocus.cx));
+  const inY = Math.max(pad.t, Math.min(H-pad.b, mFocus.cy));
+  const cxL = inX < (pad.l+W-pad.r)/2 ? W-pad.r-RX-12 : pad.l+RX+12;
+  const cyL = inY < (pad.t+H-pad.b)/2 ? H-pad.b-RY-12 : pad.t+RY+12;
+
+  const ground=css.getPropertyValue('--ground').trim(), ink=css.getPropertyValue('--ink').trim();
+  const dim=css.getPropertyValue('--ink-dim').trim(), hot=css.getPropertyValue('--hot').trim();
+  const UP=css.getPropertyValue('--up').trim(), DN=css.getPropertyValue('--down').trim();
+
+  g.save();
+  g.beginPath(); g.ellipse(cxL, cyL, RX, RY, 0, 0, 7); g.clip();
+  g.fillStyle = ground; g.fillRect(cxL-RX, cyL-RY, RX*2, RY*2);
+  g.translate(cxL, cyL); g.scale(M, M); g.translate(-inX, -inY);
+
+  // отметките по цената остават видими и когато под пръста няма свещ
+  g.strokeStyle = css.getPropertyValue('--rule').trim(); g.lineWidth = 1/M;
+  for(let k=0;k<=4;k++){
+    const yy = pad.t + k*(H-pad.t-pad.b)/4;
+    if(Math.abs(yy-inY) > RY/M + 4) continue;
+    g.beginPath(); g.moveTo(inX-RX/M, yy); g.lineTo(inX+RX/M, yy); g.stroke();
+  }
+
+  // дебелините се делят на увеличението, иначе всичко става тлъсто
+  const bw = (W-pad.l-pad.r)/G.n, half = RX/M + bw*2;
+  const a = G.ix(inX-half), b = G.ix(inX+half);
+  if(bw*M >= 3){
+    const body = Math.max(1.5/M, bw*0.62);
+    for(let i=a;i<=b;i++){
+      const up = meas.c[i] >= meas.o[i];
+      g.strokeStyle = g.fillStyle = up ? UP : DN;
+      g.lineWidth = Math.max(0.6/M, bw*0.12);
+      g.beginPath(); g.moveTo(x(i), y(meas.h[i])); g.lineTo(x(i), y(meas.l[i])); g.stroke();
+      const yo=y(meas.o[i]), yc=y(meas.c[i]);
+      g.fillRect(x(i)-body/2, Math.min(yo,yc), body, Math.max(0.8/M, Math.abs(yc-yo)));
+    }
+  } else {
+    g.beginPath();
+    for(let i=a;i<=b;i++) i>a?g.lineTo(x(i),y(meas.c[i])):g.moveTo(x(i),y(meas.c[i]));
+    g.strokeStyle = ink; g.lineWidth = 2/M; g.stroke();
+  }
+  if(sel){
+    const xa=x(sel.i0), xb=x(sel.i1), ya=y(sel.p0), yb=y(sel.p1);
+    g.strokeStyle = sel.p1>=sel.p0 ? UP : DN; g.lineWidth = 2/M;
+    g.strokeRect(Math.min(xa,xb), Math.min(ya,yb), Math.abs(xb-xa), Math.abs(yb-ya));
+  }
+  g.restore();
+
+  g.beginPath(); g.ellipse(cxL, cyL, RX, RY, 0, 0, 7);
+  g.strokeStyle = dim; g.lineWidth = 2; g.stroke();
+  g.strokeStyle = hot; g.lineWidth = 1.5;
+  g.beginPath();
+  g.moveTo(cxL-RX+6, cyL); g.lineTo(cxL-12, cyL);
+  g.moveTo(cxL+12, cyL);   g.lineTo(cxL+RX-6, cyL);
+  g.moveTo(cxL, cyL-RY+5); g.lineTo(cxL, cyL-9);
+  g.moveTo(cxL, cyL+9);    g.lineTo(cxL, cyL+RY-5);
+  g.stroke();
+  g.beginPath(); g.arc(cxL, cyL, 4, 0, 7); g.fillStyle = hot; g.fill();
+
+  // точната цена под кръстчето — иначе лупата показва къде, но не колко
+  const pv = G.inv(inY), lb = fmt(pv, pv<10?4:2);
+  g.font = '500 22px '+css.getPropertyValue('--num');
+  const tw = g.measureText(lb).width;
+  const ly = cyL > H/2 ? cyL-RY-34 : cyL+RY+4;
+  g.fillStyle = ground; g.fillRect(cxL-tw/2-8, ly, tw+16, 30);
+  g.strokeStyle = dim; g.lineWidth = 1; g.strokeRect(cxL-tw/2-8, ly, tw+16, 30);
+  g.fillStyle = ink; g.fillText(lb, cxL-tw/2, ly+21);
 }
 
 function drawMeas(){
@@ -3980,6 +4066,16 @@ function drawMeas(){
     g.fillRect(lxp-7, lyp-22, tw+14, 30);
     g.strokeStyle = col; g.lineWidth=1.5; g.strokeRect(lxp-7, lyp-22, tw+14, 30);
     g.fillStyle = col; g.fillText(lbl, lxp, lyp);
+
+    // дръжки по четирите ъгъла: правоъгълникът се дорегулира след като е сложен,
+    // затова първият ъгъл не трябва да е точен от раз
+    const HS = 20;
+    MCORNERS.forEach(([ki,kp])=>{
+      const hx = x(sel[ki]), hy = y(sel[kp]);
+      g.fillStyle = css.getPropertyValue('--ground').trim();
+      g.fillRect(hx-HS/2, hy-HS/2, HS, HS);
+      g.strokeStyle = col; g.lineWidth = 2; g.strokeRect(hx-HS/2, hy-HS/2, HS, HS);
+    });
   }
 
   g.font = '400 20px '+css.getPropertyValue('--num');
@@ -4008,6 +4104,7 @@ function drawMeas(){
     g.fillStyle = ink; g.fillText(lb, W-pad.r+9, my+7);
   }
 
+  drawLoupe(g, G, css);
   renderMeasRead(); renderMeasCross();
 }
 
@@ -4214,7 +4311,20 @@ S.mCur = false;
     const cx = (ev.clientX - r.left)/r.width*c.width;
     const cy = (ev.clientY - r.top)/r.height*c.height;
     const G = mGeom();
-    return { i: G.ix(cx), p: G.inv(cy) };
+    return { i: G.ix(cx), p: G.inv(cy), cx, cy };
+  };
+  // радиусът за хващане се мери в екранни пиксели и се превръща в координати на
+  // платното, иначе на телефон дръжката е недостижима
+  const hitR = () => 20 * (c.width / c.getBoundingClientRect().width);
+  const grabCorner = (cx, cy) => {
+    if(!sel) return null;
+    const G = mGeom(), R = hitR();
+    let best = null, bd = R*R;
+    for(const [ki,kp] of MCORNERS){
+      const dx = G.x(sel[ki])-cx, dy = G.y(sel[kp])-cy, d = dx*dx+dy*dy;
+      if(d < bd){ bd = d; best = { ki, kp }; }
+    }
+    return best;
   };
 
   chartGestures({
@@ -4225,23 +4335,37 @@ S.mCur = false;
     setView: v => { mView = v; },
     geom: () => mGeom(),
     cursor: () => S.mCur,
-    mark: (i,p) => { mMark = { i, p }; },
+    mark: (i,p) => { mMark = { i, p };
+      const G = mGeom(); mFocus = { cx:G.x(i), cy:G.y(p) }; },
     redraw: () => drawMeas(),
-    reset: () => { mMark=null; mView=null; sel=null; drawMeas(); },
+    reset: () => { mMark=null; mView=null; sel=null; mFocus=null; mGrab=null; drawMeas(); },
     drag: 'custom',
     onDrag: (phase, ev) => {
-      if(phase==='cancel'){ drag=null; return; }
+      if(phase==='cancel'){ drag=null; mGrab=null; mFocus=null; drawMeas(); return; }
       if(phase==='end'){
-        if(sel && sel.i0===sel.i1 && Math.abs(sel.p1-sel.p0)<1e-9){ sel=null; drawMeas(); }
-        drag=null; return;
+        if(sel && sel.i0===sel.i1 && Math.abs(sel.p1-sel.p0)<1e-9) sel=null;
+        drag=null; mGrab=null; mFocus=null; drawMeas(); return;
       }
       if(!meas) return;
       const q = at(ev);
-      if(phase==='start'){ drag=q; sel={ i0:q.i, i1:q.i, p0:q.p, p1:q.p }; }
-      else if(drag && sel){ sel.i1=q.i; sel.p1=q.p; }
+      if(phase==='start'){
+        mGrab = grabCorner(q.cx, q.cy);            // близо до ъгъл → дорегулиране
+        if(!mGrab){ drag=q; sel={ i0:q.i, i1:q.i, p0:q.p, p1:q.p }; }
+      } else if(mGrab && sel){
+        sel[mGrab.ki] = q.i; sel[mGrab.kp] = q.p;
+      } else if(drag && sel){
+        sel.i1=q.i; sel.p1=q.p;
+      }
+      mFocus = { cx:q.cx, cy:q.cy };
       drawMeas();
     }
   });
+
+  // при маркер лупата се гаси при вдигане на пръста — както при избор на текст
+  const lift = () => { if(S.mCur && mFocus){ mFocus = null; drawMeas(); } };
+  c.addEventListener('touchend', lift, {passive:true});
+  c.addEventListener('touchcancel', lift, {passive:true});
+  window.addEventListener('pointerup', lift);
 })();
 
 document.getElementById('m-cross').addEventListener('click', e=>{
@@ -4272,6 +4396,11 @@ document.getElementById('m-int').addEventListener('click', e=>{
     S.mCur = !S.mCur;
     e.target.setAttribute('aria-pressed', S.mCur);
     if(!S.mCur) mMark = null;
+    mFocus = null; drawMeas();
+  }
+  if(e.target.id==='m-loupe'){
+    S.mLoupe = !S.mLoupe;
+    e.target.setAttribute('aria-pressed', S.mLoupe);
     drawMeas();
   }
 });
