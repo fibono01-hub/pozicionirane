@@ -954,7 +954,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
 </div>
 
 <footer>
-  <span style="font-family:var(--mono);color:var(--ink)">версия 63</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
+  <span style="font-family:var(--mono);color:var(--ink)">версия 64</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
   Фъндингът и откритият интерес идват от публичните API-та на Binance, Bybit, OKX и Hyperliquid.
   Ако някоя борса покаже грешка, най-честата причина е блокиране по регион или ограничение на заявките — изчакай минута и обнови.
 </footer>
@@ -1102,7 +1102,7 @@ function findCascades(px, oi){
 
 function drawChart(){
   const c = document.getElementById('chart'), g = c.getContext('2d');
-  const W=c.width, H=c.height, pad={l:8,r:8,t:16,b:30};
+  const W=c.width, H=c.height, pad={l:8,r:8,t:21,b:39};
   g.clearRect(0,0,W,H);
   if(!series || series.oi.length<2) return;
 
@@ -1170,22 +1170,22 @@ function drawChart(){
       g.fillStyle = f.v>=0 ? long : short;
       g.fillRect(bx-bw/2, f.v>=0 ? frMid-h : frMid, bw, Math.max(1.5,h));
     });
-    g.font = '400 19px '+css.getPropertyValue('--num');
+    g.font = '400 25px '+css.getPropertyValue('--num');
     g.fillStyle = dim;
     g.fillText('±'+mx.toFixed(0)+'%', pad.l, frTop+16);
   } else {
-    g.font = '400 19px '+css.getPropertyValue('--num');
+    g.font = '400 25px '+css.getPropertyValue('--num');
     g.fillStyle = rule;
     g.fillText('няма данни за фъндинг', pad.l, frMid-8);
   }
 
   // етикети по краищата
-  g.font = '400 20px '+css.getPropertyValue('--num');
+  g.font = '400 26px '+css.getPropertyValue('--num');
   g.fillStyle = dim;
   const d0 = new Date(t0), d1 = new Date(t1);
   const lbl = d => d.getDate()+'.'+(d.getMonth()+1)+' '+String(d.getHours()).padStart(2,'0')+':00';
-  g.fillText(lbl(d0), pad.l, H-8);
-  const txt = lbl(d1); g.fillText(txt, W-pad.r-g.measureText(txt).width, H-8);
+  g.fillText(lbl(d0), pad.l, H-10);
+  const txt = lbl(d1); g.fillText(txt, W-pad.r-g.measureText(txt).width, H-10);
 }
 
 /* ---------------- обща лента с цената ---------------- */
@@ -1231,7 +1231,7 @@ async function loadSpot(){
 
 function drawFlow(){
   const c = document.getElementById('flow'), g = c.getContext('2d');
-  const W=c.width, H=c.height, pad={l:8,r:8,t:14,b:14};
+  const W=c.width, H=c.height, pad={l:8,r:8,t:18,b:14};
   g.clearRect(0,0,W,H);
   const st = document.getElementById('flow-stats');
   if(!spot || spot.qv.length<3){ st.innerHTML='<span>Няма спот данни.</span>'; return; }
@@ -1801,7 +1801,7 @@ function activeMAs(){
 
 function drawPrice(){
   const c = document.getElementById('pchart'), g = c.getContext('2d');
-  const W=c.width, H=c.height, pad={l:8,r:100,t:16,b:30};
+  const W=c.width, H=c.height, pad={l:8,r:130,t:21,b:39};
   g.clearRect(0,0,W,H);
   if(!price || price.c.length<3){ document.getElementById('ma-read').innerHTML='<div class="empty">Няма ценови данни.</div>'; return; }
 
@@ -1839,7 +1839,7 @@ function drawPrice(){
   const inv = yy => { const q = hi-(yy-pad.t)/(pb-pad.t)*(hi-lo); return S.pLog?Math.exp(q):q; };
 
   g.strokeStyle = rule; g.lineWidth=1;
-  g.font = '400 20px '+css.getPropertyValue('--num');
+  g.font = '400 26px '+css.getPropertyValue('--num');
   for(let k=0;k<=4;k++){
     const yy = pad.t + k*(pb-pad.t)/4;
     g.beginPath(); g.moveTo(pad.l,yy); g.lineTo(W-pad.r,yy); g.stroke();
@@ -1904,9 +1904,9 @@ function drawPrice(){
       ? (d.getMonth()+1)+'.'+String(d.getFullYear()).slice(2)
       : d.getDate()+'.'+(d.getMonth()+1); };
   g.fillStyle = dim;
-  g.fillText(fd(vt[0]), pad.l, H-8);
+  g.fillText(fd(vt[0]), pad.l, H-10);
   const tx = fd(vt[n-1]);
-  g.fillText(tx, W-pad.r-g.measureText(tx).width, H-8);
+  g.fillText(tx, W-pad.r-g.measureText(tx).width, H-10);
 
   // маркер
   const at = cursor==null ? n-1 : Math.max(0, Math.min(n-1, cursor-i0));
@@ -2604,7 +2604,7 @@ function zGeom(){
   const N = idx.length;
   if(N<10) return null;
 
-  const W=c.width, H=c.height, pad={l:8,r:70,t:12,b:26};
+  const W=c.width, H=c.height, pad={l:8,r:91,t:16,b:34};
   if(zView && (zView.i1>N-1 || zView.i0<0 || zView.i1<=zView.i0)) zView = null;
   const i0 = zView ? zView.i0 : 0, i1 = zView ? zView.i1 : N-1;
   const n = i1-i0+1;
@@ -2643,7 +2643,7 @@ function drawZ(){
   const hot=css.getPropertyValue('--hot').trim(), short=css.getPropertyValue('--short').trim();
   const SUBC = [hot, short, css.getPropertyValue('--long').trim()];
 
-  g.font = '400 19px '+css.getPropertyValue('--num');
+  g.font = '400 25px '+css.getPropertyValue('--num');
   const lbl = q => Math.abs(q)>=100 ? q.toFixed(0) : Math.abs(q)>=10 ? q.toFixed(1) : q.toFixed(2);
 
   // зони: при Z-score по персентили, иначе по класическите прагове
@@ -2733,9 +2733,9 @@ function drawZ(){
 
   g.fillStyle = dim;
   const yr = i => new Date(S1.t[idx[i]]).getFullYear();
-  g.fillText(yr(i0), pad.l, H-6);
+  g.fillText(yr(i0), pad.l, H-10);
   const tx = String(yr(i1));
-  g.fillText(tx, W-pad.r-g.measureText(tx).width, H-6);
+  g.fillText(tx, W-pad.r-g.measureText(tx).width, H-10);
 
   const note = document.getElementById('ind-scalenote');
   if(note) note.textContent = (S.indLog ? (SC.name||'лог') : 'линейна скала')
@@ -3074,7 +3074,7 @@ async function loadSpec(){
 /* --- периодограма с праг спрямо червен шум --- */
 function drawPgram(){
   const cv = document.getElementById('pgram'), g = cv.getContext('2d');
-  const W=cv.width, H=cv.height, pad={l:8,r:64,t:14,b:30};
+  const W=cv.width, H=cv.height, pad={l:8,r:83,t:18,b:39};
   g.clearRect(0,0,W,H);
   const read = document.getElementById('pg-read');
   if(!spec || spec.c.length<200){ read.innerHTML='Няма достатъчно история.'; return; }
@@ -3130,11 +3130,11 @@ function drawPgram(){
   const py = v => pad.t + (1 - v/maxP)*(H-pad.t-pad.b);
 
   g.strokeStyle = rule; g.lineWidth=1;
-  g.font = '400 19px '+css.getPropertyValue('--num'); g.fillStyle = dim;
+  g.font = '400 25px '+css.getPropertyValue('--num'); g.fillStyle = dim;
   [7,14,30,60,90,180,365,730].filter(q=>q>=lim[0]&&q<=lim[1]).forEach(q=>{
     const xx = pad.l + (Math.log(q)-x0)/(x1-x0)*(W-pad.l-pad.r);
     g.beginPath(); g.moveTo(xx,pad.t); g.lineTo(xx,H-pad.b); g.stroke();
-    g.fillText(q+'д', xx+4, H-8);
+    g.fillText(q+'д', xx+4, H-10);
   });
 
   g.beginPath();
@@ -3229,7 +3229,7 @@ function drawHeat(){
 /* --- лентов филтър --- */
 function drawBandpass(){
   const cv = document.getElementById('bpass'), g = cv.getContext('2d');
-  const W=cv.width, H=cv.height, pad={l:8,r:64,t:14,b:26};
+  const W=cv.width, H=cv.height, pad={l:8,r:83,t:18,b:34};
   g.clearRect(0,0,W,H);
   const read = document.getElementById('bp-read');
   if(!spec || spec.c.length<200){ read.innerHTML='Няма достатъчно история.'; return; }
@@ -3286,10 +3286,10 @@ function drawBandpass(){
   for(let i=0;i<M;i++) i?g.lineTo(x(i),cy(cyc[i])):g.moveTo(x(i),cy(cyc[i]));
   g.strokeStyle = ink; g.lineWidth=2; g.stroke();
 
-  g.font = '400 19px '+css.getPropertyValue('--num'); g.fillStyle = dim;
-  g.fillText(new Date(spec.t[0]).getFullYear(), pad.l, H-6);
+  g.font = '400 25px '+css.getPropertyValue('--num'); g.fillStyle = dim;
+  g.fillText(new Date(spec.t[0]).getFullYear(), pad.l, H-10);
   const tx = String(new Date(spec.t[M-1]).getFullYear());
-  g.fillText(tx, W-pad.r-g.measureText(tx).width, H-6);
+  g.fillText(tx, W-pad.r-g.measureText(tx).width, H-10);
 
   const last = cyc[M-1], prev = cyc[M-2];
   read.innerHTML = `Задържани са периоди между <b>${lo}</b> и <b>${hi}</b> дни. `
@@ -3346,7 +3346,7 @@ async function loadCbp(){
 
 function drawCbp(){
   const cv = document.getElementById('cbpchart'), g = cv.getContext('2d');
-  const W=cv.width, H=cv.height, pad={l:8,r:72,t:14,b:26};
+  const W=cv.width, H=cv.height, pad={l:8,r:94,t:18,b:34};
   g.clearRect(0,0,W,H);
   if(!cbp || cbp.length<5) return;
 
@@ -3363,7 +3363,7 @@ function drawCbp(){
 
   g.strokeStyle = rule; g.lineWidth=1;
   g.beginPath(); g.moveTo(pad.l,mid); g.lineTo(W-pad.r,mid); g.stroke();
-  g.font = '400 19px '+css.getPropertyValue('--num'); g.fillStyle = dim;
+  g.font = '400 25px '+css.getPropertyValue('--num'); g.fillStyle = dim;
   g.fillText('0', W-pad.r+10, mid+7);
   g.fillText('+'+amp.toFixed(0), W-pad.r+10, mid-bh(amp)+6);
   g.fillText('-'+amp.toFixed(0), W-pad.r+10, mid+bh(amp)+6);
@@ -3384,9 +3384,9 @@ function drawCbp(){
   g.strokeStyle = dim; g.lineWidth=1.5; g.stroke();
 
   g.fillStyle = dim;
-  g.fillText(d[0].ds.slice(5), pad.l, H-6);
+  g.fillText(d[0].ds.slice(5), pad.l, H-10);
   const tx = d[n-1].ds.slice(5);
-  g.fillText(tx, W-pad.r-g.measureText(tx).width, H-6);
+  g.fillText(tx, W-pad.r-g.measureText(tx).width, H-10);
 
   // числа
   const avg = k => d.slice(-k).reduce((a,b)=>a+b.bp,0)/Math.min(k,n);
@@ -3662,7 +3662,7 @@ async function loadEtf(){
 function drawEtf(){
   const box = document.getElementById('etf-stats'), tbl = document.getElementById('etf-table');
   const cv = document.getElementById('etfchart'), g = cv.getContext('2d');
-  const W=cv.width, H=cv.height, pad={l:8,r:78,t:14,b:28};
+  const W=cv.width, H=cv.height, pad={l:8,r:101,t:18,b:36};
   g.clearRect(0,0,W,H);
   if(!etf){ return; }
 
@@ -3688,7 +3688,7 @@ function drawEtf(){
 
   g.strokeStyle = rule; g.lineWidth=1;
   g.beginPath(); g.moveTo(pad.l,mid); g.lineTo(W-pad.r,mid); g.stroke();
-  g.font = '400 19px '+css.getPropertyValue('--num'); g.fillStyle = dim;
+  g.font = '400 25px '+css.getPropertyValue('--num'); g.fillStyle = dim;
   g.fillText('0', W-pad.r+10, mid+7);
   g.fillText(usd(amp), W-pad.r+10, mid-barH(amp)+6);
   g.fillText('-'+usd(amp), W-pad.r+10, mid+barH(amp)+6);
@@ -3728,9 +3728,9 @@ function drawEtf(){
   g.fillStyle = dim;
   g.fillText(usd(cum[cum.length-1]), W-pad.r+10, cy(cum[cum.length-1])+6);
 
-  g.fillText(d[0].ds.slice(5), pad.l, H-8);
+  g.fillText(d[0].ds.slice(5), pad.l, H-10);
   const tx = d[n-1].ds.slice(5);
-  g.fillText(tx, W-pad.r-g.measureText(tx).width, H-8);
+  g.fillText(tx, W-pad.r-g.measureText(tx).width, H-10);
 
   // числа
   const sum = k => d.slice(-k).reduce((a,b)=>a+b.flow,0);
@@ -3885,7 +3885,7 @@ async function loadMeas(){
 // геометрия, споделена между рисуването и жестовете
 function mGeom(){
   const c = document.getElementById('mchart');
-  const W=c.width, H=c.height, pad={l:8,r:92,t:16,b:28};
+  const W=c.width, H=c.height, pad={l:8,r:120,t:21,b:36};
   const N = meas.c.length;
   if(mView && (mView.i1>N-1 || mView.i0<0 || mView.i1<=mView.i0)) mView = null;
   const i0 = mView ? mView.i0 : 0, i1 = mView ? mView.i1 : N-1;
@@ -3982,7 +3982,7 @@ function drawLoupe(g, G, css){
 
   // точната цена под кръстчето — иначе лупата показва къде, но не колко
   const pv = G.inv(inY), lb = fmt(pv, pv<10?4:2);
-  g.font = '500 22px '+css.getPropertyValue('--num');
+  g.font = '500 29px '+css.getPropertyValue('--num');
   const tw = g.measureText(lb).width;
   const ly = cyL > H/2 ? cyL-RY-34 : cyL+RY+4;
   g.fillStyle = ground; g.fillRect(cxL-tw/2-8, ly, tw+16, 30);
@@ -4003,7 +4003,7 @@ function drawMeas(){
   const UP=css.getPropertyValue('--up').trim(), DN=css.getPropertyValue('--down').trim();
 
   g.strokeStyle = rule; g.lineWidth=1;
-  g.font = '400 20px '+css.getPropertyValue('--num');
+  g.font = '400 26px '+css.getPropertyValue('--num');
   for(let k=0;k<=4;k++){
     const yy = pad.t + k*(H-pad.t-pad.b)/4;
     g.beginPath(); g.moveTo(pad.l,yy); g.lineTo(W-pad.r,yy); g.stroke();
@@ -4066,7 +4066,7 @@ function drawMeas(){
 
     const dp = (sel.p1/sel.p0-1)*100;
     const lbl = pct(dp);
-    g.font = '500 24px '+css.getPropertyValue('--num');
+    g.font = '500 31px '+css.getPropertyValue('--num');
     const tw = g.measureText(lbl).width;
     const lxp = Math.min(W-pad.r-tw-12, Math.max(pad.l+6, (xa+xb)/2 - tw/2));
     const lyp = Math.min(ya,yb) - 10;
@@ -4086,15 +4086,15 @@ function drawMeas(){
     });
   }
 
-  g.font = '400 20px '+css.getPropertyValue('--num');
+  g.font = '400 26px '+css.getPropertyValue('--num');
   g.fillStyle = dim;
   const fd = ms => { const d=new Date(ms);
     return (S.mInt==='1h'||S.mInt==='4h')
       ? d.getDate()+'.'+(d.getMonth()+1)+' '+String(d.getHours()).padStart(2,'0')+':00'
       : d.getDate()+'.'+(d.getMonth()+1)+'.'+String(d.getFullYear()).slice(2); };
-  g.fillText(fd(meas.t[G.i0]), pad.l, H-8);
+  g.fillText(fd(meas.t[G.i0]), pad.l, H-10);
   const tx = fd(meas.t[G.i1]);
-  g.fillText(tx, W-pad.r-g.measureText(tx).width, H-8);
+  g.fillText(tx, W-pad.r-g.measureText(tx).width, H-10);
 
   // маркер
   if(mMark && mMark.i>=G.i0 && mMark.i<=G.i1){
@@ -4106,7 +4106,7 @@ function drawMeas(){
     g.setLineDash([]);
     g.fillStyle = ink; g.beginPath(); g.arc(mx2, my, 4, 0, 7); g.fill();
     const lb = fmt(mp, mp<10?4:2);
-    g.font = '500 20px '+css.getPropertyValue('--num');
+    g.font = '500 26px '+css.getPropertyValue('--num');
     g.fillStyle = css.getPropertyValue('--ground').trim();
     g.fillRect(W-pad.r+4, my-13, pad.r-6, 26);
     g.fillStyle = ink; g.fillText(lb, W-pad.r+9, my+7);
@@ -4540,7 +4540,7 @@ function vpBuild(){
 
 function drawVp(){
   const cv = document.getElementById('vpchart'), g = cv.getContext('2d');
-  const W=cv.width, H=cv.height, pad={l:8,r:88,t:16,b:28};
+  const W=cv.width, H=cv.height, pad={l:8,r:114,t:21,b:36};
   g.clearRect(0,0,W,H);
   if(!vp) return;
 
@@ -4569,7 +4569,7 @@ function drawVp(){
 
   // решетка
   g.strokeStyle = rule; g.lineWidth=1;
-  g.font = '400 20px '+css.getPropertyValue('--num');
+  g.font = '400 26px '+css.getPropertyValue('--num');
   for(let k=0;k<=4;k++){
     const yy = pad.t + k*(H-pad.t-pad.b)/4;
     g.beginPath(); g.moveTo(pad.l,yy); g.lineTo(W-pad.r,yy); g.stroke();
@@ -4629,7 +4629,7 @@ function drawVp(){
   const yl = Math.max(pad.t+14, Math.min(H-pad.b-14, y(vp.last)));
   const lcol = off ? hot : ink;
   if(!off){ g.fillStyle = ink; g.beginPath(); g.arc(x(I1), yl, 5, 0, Math.PI*2); g.fill(); }
-  g.font = '500 21px '+css.getPropertyValue('--num');
+  g.font = '500 24px '+css.getPropertyValue('--num');
   const lb = (off?(vp.last>top?'↑ ':'↓ '):'')
            + axPrice(vp.last, g, pad.r-16);
   g.fillStyle = css.getPropertyValue('--ground').trim();
@@ -4649,7 +4649,7 @@ function drawVp(){
   }
 
   // етикети вляво
-  g.font = '400 19px '+css.getPropertyValue('--num');
+  g.font = '400 25px '+css.getPropertyValue('--num');
   g.fillStyle = dim;
   g.fillText('POC', pad.l+4, y(vp.pocP)-6);
   g.fillText('VAH', pad.l+4, y(vp.vah)-6);
@@ -4659,11 +4659,11 @@ function drawVp(){
     return (vp.int==='1h'||vp.int==='4h')
       ? d.getDate()+'.'+(d.getMonth()+1)+' '+String(d.getHours()).padStart(2,'0')+':00'
       : d.getDate()+'.'+(d.getMonth()+1)+'.'+String(d.getFullYear()).slice(2); };
-  g.font = '400 19px '+css.getPropertyValue('--num');
+  g.font = '400 25px '+css.getPropertyValue('--num');
   g.fillStyle = dim;
-  g.fillText(fdv(vp.t[I0]), pad.l, H-8);
+  g.fillText(fdv(vp.t[I0]), pad.l, H-10);
   const txv = fdv(vp.t[I1]);
-  g.fillText(txv, cR-g.measureText(txv).width, H-8);
+  g.fillText(txv, cR-g.measureText(txv).width, H-10);
 
   renderVpCross();
 }
@@ -5033,7 +5033,7 @@ function buildLq(){
 
 function lqGeom(){
   const cv = document.getElementById('lqchart');
-  const W=cv.width, H=cv.height, pad={l:8,r:92,t:14,b:28};
+  const W=cv.width, H=cv.height, pad={l:8,r:120,t:18,b:36};
   // Панелът отстрани дели същата ценова ос с картата. Затова се пази място тук,
   // а не се рисува втора графика — иначе двете трябва да се сверяват на око.
   const secW = S.lqSide ? 190 : 0;
@@ -5091,7 +5091,7 @@ function drawLq(){
   g.drawImage(off, pad.l, pad.t, PW, PH);
 
   // ценова скала
-  g.font = '400 20px '+css.getPropertyValue('--num');
+  g.font = '400 26px '+css.getPropertyValue('--num');
   for(let k=0;k<=5;k++){
     const yy = pad.t + k*PH/5;
     const v = pHi - k*(pHi-pLo)/5;
@@ -5123,19 +5123,19 @@ function drawLq(){
     g.fillStyle = css.getPropertyValue('--ground').trim();
     g.fillRect(W-pad.r-secW+5, yl-14, pad.r-9, 28);
     g.strokeStyle = ink; g.lineWidth=1.5; g.strokeRect(W-pad.r-secW+5, yl-14, pad.r-9, 28);
-    g.font = '500 21px '+css.getPropertyValue('--num');
+    g.font = '500 24px '+css.getPropertyValue('--num');
     g.fillStyle = ink;
     g.fillText(axPrice(last, g, pad.r-15), W-pad.r-secW+10, yl+7);
   }
 
   // дати
-  g.font = '400 20px '+css.getPropertyValue('--num'); g.fillStyle = dim;
+  g.font = '400 26px '+css.getPropertyValue('--num'); g.fillStyle = dim;
   const fd = ms => { const q=new Date(ms);
     return S.lqInt==='1d' ? q.getDate()+'.'+(q.getMonth()+1)+'.'+String(q.getFullYear()).slice(2)
                           : q.getDate()+'.'+(q.getMonth()+1)+' '+String(q.getHours()).padStart(2,'0')+':00'; };
-  g.fillText(fd(d.t[i0]), pad.l, H-8);
+  g.fillText(fd(d.t[i0]), pad.l, H-10);
   const tx = fd(d.t[i1]);
-  g.fillText(tx, W-pad.r-secW-g.measureText(tx).width, H-8);
+  g.fillText(tx, W-pad.r-secW-g.measureText(tx).width, H-10);
 
   // кръстачка
   if(lqMark && lqMark.i>=i0 && lqMark.i<=i1){
@@ -5148,7 +5148,7 @@ function drawLq(){
     g.fillStyle = css.getPropertyValue('--ground').trim();
     g.fillRect(W-pad.r-secW+5, my-13, pad.r-9, 26);
     g.strokeStyle = ink; g.lineWidth=1.2; g.strokeRect(W-pad.r-secW+5, my-13, pad.r-9, 26);
-    g.font = '500 20px '+css.getPropertyValue('--num');
+    g.font = '500 26px '+css.getPropertyValue('--num');
     g.fillStyle = ink;
     g.fillText(axPrice(mp, g, pad.r-15), W-pad.r-secW+10, my+7);
   }
@@ -5221,12 +5221,12 @@ function drawLqDelta(G, css){
     g.setLineDash([]);
   }
 
-  g.font = '400 18px '+css.getPropertyValue('--num');
+  g.font = '400 23px '+css.getPropertyValue('--num');
   g.fillStyle = dim;
   g.fillText('кумулативна делта', pad.l, 16);
   const endTxt = (acc>=0?'+':'−')+usd(Math.abs(acc));
   g.fillStyle = acc>=0?UP:DN;
-  g.font = '500 19px '+css.getPropertyValue('--num');
+  g.font = '500 25px '+css.getPropertyValue('--num');
   g.fillText(endTxt, pad.l+PW-g.measureText(endTxt).width, Math.max(padT+16, Math.min(H-padB-10, y(acc)-8)));
 
   const note = document.getElementById('lq-deltanote');
@@ -5322,7 +5322,7 @@ function drawLqPanel(g, G, css){
 
   // --- 4. надписите извън отрязването, подравнени вдясно ---
   if(tot > 0){
-    g.font = '500 19px '+css.getPropertyValue('--num');
+    g.font = '500 25px '+css.getPropertyValue('--num');
     const put = (txt, col, yy) => {
       g.fillStyle = col;
       g.fillText(txt, x1-g.measureText(txt).width, yy);
@@ -5332,7 +5332,7 @@ function drawLqPanel(g, G, css){
   }
   // при маркер се казва кой момент се чете, за да не мине за текущ
   if(!SL.live){
-    g.font = '500 17px '+css.getPropertyValue('--num');
+    g.font = '500 22px '+css.getPropertyValue('--num');
     g.fillStyle = css.getPropertyValue('--hot').trim();
     const tag = 'маркер · '+lqSliceWhen(SL);
     g.fillText(tag, x1-g.measureText(tag).width, H-pad.b+18);
@@ -5561,7 +5561,7 @@ function lqSliceWhen(sl){
 
 function lqSecGeom(){
   const cv = document.getElementById('lqsec');
-  const W=cv.width, H=cv.height, pad={l:76,r:84,t:16,b:30};
+  const W=cv.width, H=cv.height, pad={l:99,r:109,t:21,b:39};
   const px = lqSlice().p;          // обхватът се центрира около показаната цена
   let b0, b1;
   if(S.lqSpan==='all'){ b0=0; b1=LQ_NB-1; }
@@ -5621,7 +5621,7 @@ function drawLqSec(){
 
   // решетка и двете скали
   g.strokeStyle = rule; g.lineWidth=1;
-  g.font = '400 19px '+css.getPropertyValue('--num');
+  g.font = '400 25px '+css.getPropertyValue('--num');
   for(let k=0;k<=4;k++){
     const yy = pad.t + k*PH/4;
     g.beginPath(); g.moveTo(pad.l,yy); g.lineTo(W-pad.r,yy); g.stroke();
@@ -5654,7 +5654,7 @@ function drawLqSec(){
     g.strokeStyle = css.getPropertyValue('--hot').trim(); g.lineWidth=2;
     g.setLineDash([7,6]); g.beginPath(); g.moveTo(cx,pad.t); g.lineTo(cx,pad.t+PH); g.stroke();
     g.setLineDash([]);
-    g.font = '500 20px '+css.getPropertyValue('--num');
+    g.font = '500 26px '+css.getPropertyValue('--num');
     const lb = axPrice(px, g, pad.r-14);
     const tw = g.measureText(lb).width;
     g.fillStyle = css.getPropertyValue('--ground').trim();
@@ -5685,12 +5685,12 @@ function drawLqSec(){
   }
 
   // ценова ос
-  g.font = '400 19px '+css.getPropertyValue('--num'); g.fillStyle = dim;
+  g.font = '400 25px '+css.getPropertyValue('--num'); g.fillStyle = dim;
   for(let k=0;k<=4;k++){
     const b = Math.round(b0 + k*(b1-b0)/4), p = lq.binP(b);
     const lb = p>=1000?(p/1000).toFixed(1)+'K':p.toFixed(p<10?3:1);
     const tw = g.measureText(lb).width;
-    g.fillText(lb, Math.max(pad.l, Math.min(W-pad.r-tw, x(b)-tw/2)), H-8);
+    g.fillText(lb, Math.max(pad.l, Math.min(W-pad.r-tw, x(b)-tw/2)), H-10);
   }
 
   // отчитане
@@ -5924,7 +5924,7 @@ function drawCalc(){
   const ink=css.getPropertyValue('--ink').trim(), hot=css.getPropertyValue('--hot').trim();
   const UP=css.getPropertyValue('--up').trim(), DN=css.getPropertyValue('--down').trim();
 
-  const W=cv.width, H=cv.height, pad={l:8,r:92,t:16,b:30};
+  const W=cv.width, H=cv.height, pad={l:8,r:120,t:21,b:39};
   const anchors = [P.entry, P.liq, P.tp, P.sl, live, be].filter(v=>v!=null && isFinite(v));
   let lo = Math.min(...anchors), hi = Math.max(...anchors);
   const padp = (hi-lo)*0.12 || P.entry*0.05;
@@ -5942,7 +5942,7 @@ function drawCalc(){
   const y = v => pad.t + (vmx-v)/((vmx-vmn)||1)*PH;
 
   g.strokeStyle = rule; g.lineWidth=1;
-  g.font = '400 20px '+css.getPropertyValue('--num');
+  g.font = '400 26px '+css.getPropertyValue('--num');
   for(let k=0;k<=4;k++){
     const yy = pad.t + k*PH/4, v = vmx - k*(vmx-vmn)/4;
     g.beginPath(); g.moveTo(pad.l,yy); g.lineTo(W-pad.r,yy); g.stroke();
@@ -5976,7 +5976,7 @@ function drawCalc(){
     if(pr==null || pr<lo || pr>hi) return;
     g.strokeStyle = col; g.lineWidth=1.5; g.setLineDash([6,5]);
     g.beginPath(); g.moveTo(x(pr),pad.t); g.lineTo(x(pr),pad.t+PH); g.stroke(); g.setLineDash([]);
-    g.font = '500 19px '+css.getPropertyValue('--num');
+    g.font = '500 25px '+css.getPropertyValue('--num');
     const txt = label+' '+fmt(pr, pr<10?4:2);
     const tw = g.measureText(txt).width;
     const px0 = Math.max(pad.l+2, Math.min(W-pad.r-tw, x(pr)-tw/2));
@@ -6001,7 +6001,7 @@ function drawCalc(){
     g.beginPath(); g.arc(lx, ly, 6, 0, Math.PI*2);
     g.fillStyle = now.v>=0 ? UP : DN; g.fill();
     g.strokeStyle = ink; g.lineWidth=1.6; g.stroke();
-    g.font = '500 23px '+css.getPropertyValue('--num');
+    g.font = '500 30px '+css.getPropertyValue('--num');
     const t2 = (now.v>=0?'+':'−')+usd(Math.abs(now.v))+'  '+pct(now.v/P.margin*100);
     const w2 = g.measureText(t2).width;
     const bx = Math.max(pad.l+2, Math.min(W-pad.r-w2-12, lx+12));
@@ -6013,10 +6013,10 @@ function drawCalc(){
     g.fillStyle = now.v>=0 ? UP : DN; g.fillText(t2, bx, by);
   }
 
-  g.font = '400 20px '+css.getPropertyValue('--num'); g.fillStyle = dim;
-  g.fillText(fmt(lo, lo<10?3:0), pad.l, H-8);
+  g.font = '400 26px '+css.getPropertyValue('--num'); g.fillStyle = dim;
+  g.fillText(fmt(lo, lo<10?3:0), pad.l, H-10);
   const tx = fmt(hi, hi<10?3:0);
-  g.fillText(tx, W-pad.r-g.measureText(tx).width, H-8);
+  g.fillText(tx, W-pad.r-g.measureText(tx).width, H-10);
 
   // --- таблица ---
   const rows = [['Вход', P.entry, '—', null]];
@@ -6432,7 +6432,7 @@ function renderLfVal(){
 
 function drawLfVal(R){
   const cv = document.getElementById('lfvchart'); if(!cv) return;
-  const g = cv.getContext('2d'), W=cv.width, H=cv.height, pad={l:10,r:10,t:14,b:30};
+  const g = cv.getContext('2d'), W=cv.width, H=cv.height, pad={l:10,r:10,t:18,b:39};
   g.clearRect(0,0,W,H);
   const css = getComputedStyle(document.documentElement);
   const dim=css.getPropertyValue('--ink-dim').trim(), rule=css.getPropertyValue('--rule').trim();
@@ -6462,12 +6462,12 @@ function drawLfVal(R){
     st ? g.lineTo(x(k),yP(v)) : (g.moveTo(x(k),yP(v)), st=true); }
   g.strokeStyle = dim; g.lineWidth=2; g.stroke();
 
-  g.font = '400 20px '+css.getPropertyValue('--num');
+  g.font = '400 26px '+css.getPropertyValue('--num');
   g.fillStyle = dim;
   const pl = lq.binP(b0), ph = lq.binP(b1);
-  g.fillText(fmt(pl, pl<10?3:0), pad.l, H-8);
+  g.fillText(fmt(pl, pl<10?3:0), pad.l, H-10);
   const tx = fmt(ph, ph<10?3:0);
-  g.fillText(tx, W-pad.r-g.measureText(tx).width, H-8);
+  g.fillText(tx, W-pad.r-g.measureText(tx).width, H-10);
 }
 
 function renderLf(){
@@ -6880,7 +6880,7 @@ function drawGrid(){
      <div><b class="${vs>=0?'pos':'neg'}">${smoney(vs)}</b><span>мрежа срещу държане</span></div>`;
 
   // --- цена и нива ---
-  const N = grData.length, W=cv.width, H=cv.height, pad={l:8,r:88,t:14,b:26};
+  const N = grData.length, W=cv.width, H=cv.height, pad={l:8,r:114,t:18,b:34};
   if(!grView) grView = { i0:0, i1:N-1 };
   grView.i0 = Math.max(0, Math.min(grView.i0, N-2));
   grView.i1 = Math.min(N-1, Math.max(grView.i1, grView.i0+1));
@@ -6892,7 +6892,7 @@ function drawGrid(){
   const x = i => pad.l + (i-i0)*PW/((n-1)||1);
   const y = v => pad.t + (mx-v)/((mx-mn)||1)*PH;
 
-  g.font = '400 19px '+css.getPropertyValue('--num');
+  g.font = '400 25px '+css.getPropertyValue('--num');
   R.lv.forEach(L=>{
     const col = L.side==='buy' ? A : L.side==='sell' ? T : rule;
     g.strokeStyle = col + (L.fills?'99':'44'); g.lineWidth = L.fills?1.6:1;
@@ -6916,9 +6916,9 @@ function drawGrid(){
   const fd = ms => { const q=new Date(ms);
     return S.grInt==='1d' ? q.getDate()+'.'+(q.getMonth()+1)+'.'+String(q.getFullYear()).slice(2)
                           : q.getDate()+'.'+(q.getMonth()+1)+' '+String(q.getHours()).padStart(2,'0')+':00'; };
-  g.fillText(fd(grData[i0].t), pad.l, H-8);
+  g.fillText(fd(grData[i0].t), pad.l, H-10);
   const tx2 = fd(grData[i1].t);
-  g.fillText(tx2, W-pad.r-g.measureText(tx2).width, H-8);
+  g.fillText(tx2, W-pad.r-g.measureText(tx2).width, H-10);
   const zn = document.getElementById('gr-zoom');
   if(zn) zn.innerHTML = n<N
     ? `показани ${n} от ${N} свещи · <a href="#" id="gr-zreset" style="color:var(--short)">целия обхват</a>`
@@ -6937,7 +6937,7 @@ function drawGrid(){
     for(let i=i0;i<=i1;i++) i===i0?ge.moveTo(ex(i),ey(arr[i])):ge.lineTo(ex(i),ey(arr[i]));
     ge.strokeStyle = col; ge.lineWidth = w; ge.stroke();
   });
-  ge.font = '400 19px '+css.getPropertyValue('--num'); ge.fillStyle = dim;
+  ge.font = '400 25px '+css.getPropertyValue('--num'); ge.fillStyle = dim;
   ge.fillText(usd(emx), EW-ep.r+9, ey(emx)+12);
   ge.fillText(usd(R.cap), EW-ep.r+9, ey(R.cap)+6);
 
@@ -7204,7 +7204,7 @@ function renderGl(){
 function drawGlChart(){
   const cv = document.getElementById('glchart'); if(!cv) return;
   const g = cv.getContext('2d');
-  const W=cv.width, H=cv.height, pad={l:8,r:92,t:14,b:26};
+  const W=cv.width, H=cv.height, pad={l:8,r:120,t:18,b:34};
   g.clearRect(0,0,W,H);
 
   const css = getComputedStyle(document.documentElement);
@@ -7214,7 +7214,7 @@ function drawGlChart(){
   const ground=css.getPropertyValue('--ground').trim();
 
   if(!glSt || glTicks.length<2){
-    g.font='400 22px '+css.getPropertyValue('--num'); g.fillStyle=rule;
+    g.font='400 29px '+css.getPropertyValue('--num'); g.fillStyle=rule;
     const t = glOn ? 'чака сделки…' : 'спряно';
     g.fillText(t, pad.l+8, H/2);
     return;
@@ -7235,7 +7235,7 @@ function drawGlChart(){
   const y = v => pad.t + (hi-v)/((hi-lo)||1)*PH;
 
   // нивата
-  g.font = '400 19px '+css.getPropertyValue('--num');
+  g.font = '400 25px '+css.getPropertyValue('--num');
   glSt.lv.forEach(L=>{
     if(L.px<lo || L.px>hi) return;
     const yy = y(L.px);
@@ -7271,7 +7271,7 @@ function drawGlChart(){
     g.beginPath(); g.arc(ex, ey, 7, 0, Math.PI*2);
     g.fillStyle = A; g.fill();
     g.strokeStyle = ink; g.lineWidth=2; g.stroke();
-    g.font = '500 19px '+css.getPropertyValue('--num');
+    g.font = '500 25px '+css.getPropertyValue('--num');
     const tag = 'старт · '+usd(glSt.init.dollars)+' → '+fmt(glSt.init.u, glSt.init.u<1?5:3);
     const tw = g.measureText(tag).width;
     const tagX = Math.min(W-pad.r-tw-6, ex+12);
@@ -7300,7 +7300,7 @@ function drawGlChart(){
   g.beginPath(); g.arc(x(last.t), ly, 5, 0, Math.PI*2); g.fillStyle=ink; g.fill();
   g.fillStyle = ground; g.fillRect(W-pad.r+5, ly-13, pad.r-9, 26);
   g.strokeStyle = ink; g.lineWidth=1.5; g.strokeRect(W-pad.r+5, ly-13, pad.r-9, 26);
-  g.font = '500 20px '+css.getPropertyValue('--num'); g.fillStyle = ink;
+  g.font = '500 26px '+css.getPropertyValue('--num'); g.fillStyle = ink;
   g.fillText(fmt(last.px, last.px<10?4:2), W-pad.r+10, ly+7);
 
   // Таблото е двуколонно: вляво какво е спечелено, вдясно какво има в сметката.
@@ -7318,10 +7318,10 @@ function drawGlChart(){
     [S.sym,     fmt(R.qty, 6),     dim],
   ];
 
-  g.font = '400 18px '+css.getPropertyValue('--num');
+  g.font = '400 23px '+css.getPropertyValue('--num');
   const wOf = col => Math.max(...col.map(r=>g.measureText(r[0]).width))
-                   + Math.max(...col.map(r=>{ g.font='500 20px '+css.getPropertyValue('--num');
-                       const w=g.measureText(r[1]).width; g.font='400 18px '+css.getPropertyValue('--num'); return w; }))
+                   + Math.max(...col.map(r=>{ g.font='500 26px '+css.getPropertyValue('--num');
+                       const w=g.measureText(r[1]).width; g.font='400 23px '+css.getPropertyValue('--num'); return w; }))
                    + 22;
   const wA = wOf(colA), wB = wOf(colB);
   const boxW = wA + wB + 18, boxH = 3*23 + 14;
@@ -7335,9 +7335,9 @@ function drawGlChart(){
 
   const drawCol = (col, x0, w) => col.forEach((r,i)=>{
     const yy = by0 + 22 + i*23;
-    g.font = '400 18px '+css.getPropertyValue('--num');
+    g.font = '400 23px '+css.getPropertyValue('--num');
     g.fillStyle = dim; g.fillText(r[0], x0+10, yy);
-    g.font = '500 20px '+css.getPropertyValue('--num');
+    g.font = '500 26px '+css.getPropertyValue('--num');
     g.fillStyle = r[2];
     const vw = g.measureText(r[1]).width;
     g.fillText(r[1], x0+w-10-vw, yy);
@@ -7346,12 +7346,12 @@ function drawGlChart(){
   drawCol(colB, bx0+wA+18, wB);
 
   // времева ос
-  g.font = '400 19px '+css.getPropertyValue('--num'); g.fillStyle = dim;
+  g.font = '400 25px '+css.getPropertyValue('--num'); g.fillStyle = dim;
   const hhmm = ms => { const d=new Date(ms);
     return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')+':'+String(d.getSeconds()).padStart(2,'0'); };
-  g.fillText(hhmm(t0), pad.l, H-6);
+  g.fillText(hhmm(t0), pad.l, H-10);
   const tx = hhmm(t1);
-  g.fillText(tx, W-pad.r-g.measureText(tx).width, H-6);
+  g.fillText(tx, W-pad.r-g.measureText(tx).width, H-10);
 }
 
 document.getElementById('gl-ctl').addEventListener('click', e=>{
@@ -7446,7 +7446,7 @@ function drawOpt(){
      <div><b class="neg">${fmt(O.feeFloorPct,3)}%</b><span>праг на таксите</span></div>
      <div><b>${fmt(O.avgMove,2)}%</b><span>средно движение на свещ</span></div>`;
 
-  const W=cv.width, H=cv.height, pad={l:8,r:88,t:14,b:28};
+  const W=cv.width, H=cv.height, pad={l:8,r:114,t:18,b:36};
   const PW=W-pad.l-pad.r, PH=H-pad.t-pad.b;
   const vals = O.full.concat(O.f2).filter(v=>v!=null);
   const mn = Math.min(0, ...vals), mx = Math.max(0, ...vals);
@@ -7454,7 +7454,7 @@ function drawOpt(){
   const y = v => pad.t + (mx-v)/((mx-mn)||1)*PH;
 
   g.strokeStyle = rule; g.lineWidth=1;
-  g.font = '400 19px '+css.getPropertyValue('--num');
+  g.font = '400 25px '+css.getPropertyValue('--num');
   for(let k=0;k<=3;k++){
     const yy = pad.t+k*PH/3, v = mx-k*(mx-mn)/3;
     g.beginPath(); g.moveTo(pad.l,yy); g.lineTo(W-pad.r,yy); g.stroke();
@@ -7486,7 +7486,7 @@ function drawOpt(){
   [0, Math.floor(O.ns.length/2), O.ns.length-1].forEach(i=>{
     const t = O.ns[i]+' · '+fmt(O.stepPct(O.ns[i]),2)+'%';
     const tw = g.measureText(t).width;
-    g.fillText(t, Math.max(pad.l, Math.min(W-pad.r-tw, x(i)-tw/2)), H-8);
+    g.fillText(t, Math.max(pad.l, Math.min(W-pad.r-tw, x(i)-tw/2)), H-10);
   });
 
   const drop = O.bFull.v ? (1 - O.carried/Math.max(1e-9,O.b2.v))*100 : 0;
