@@ -491,6 +491,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
       <button data-zm="roll" aria-pressed="true">Плаващи 4 г.</button>
       <button id="ind-log" aria-pressed="false">Лог</button>
       <button id="ind-cur" aria-pressed="false">Маркер</button>
+      <button id="ind-ctr" aria-pressed="false" hidden>Центрирай</button>
     </div>
     <div id="ind-chain"></div>
     <div class="chips" id="ind-pick"></div>
@@ -505,7 +506,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
     <div id="ind-cross"></div>
     <div class="legend">
       <span><i style="background:var(--ink)"></i>избраният индикатор</span>
-      <span><i style="background:var(--ink-dim)"></i>цена, лог скала</span>
+      <span><i style="background:var(--pxline)"></i>цена, лог скала</span>
       <span><i style="background:var(--short);height:9px"></i>долни 15%</span>
       <span><i style="background:var(--hot);height:9px"></i>горни 15%</span>
       <span id="ind-scalenote" style="margin-left:auto;font-family:var(--mono);font-size:11px"></span>
@@ -970,7 +971,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
 </div>
 
 <footer>
-  <span style="font-family:var(--mono);color:var(--ink)">версия 65</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
+  <span style="font-family:var(--mono);color:var(--ink)">версия 66</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
   Фъндингът и откритият интерес идват от публичните API-та на Binance, Bybit, OKX и Hyperliquid.
   Ако някоя борса покаже грешка, най-честата причина е блокиране по регион или ограничение на заявките — изчакай минута и обнови.
 </footer>
@@ -2344,6 +2345,35 @@ let cmError = null;
 S.zMode = 'roll';
 S.indPick = 'z';
 S.indLog = false;
+S.rsiCtr = false;
+
+/* --- центриран RSI: RSI минус собствената му плъзгаща средна ---
+   Средната е само назад (без бъдещи точки), затова всяка стойност е такава,
+   каквато би я видял в онзи ден. Прозорецът е около година за дълги интервали
+   и по-къс за часовите, защото Binance дава най-много 1000 свещи. */
+const CTR_WIN = { '1h':168, '4h':180, '1d':200, '3d':122, '1w':52 };
+const CTR_SM = 3;   // EMA върху резултата: маха най-дребния шум, закъснява ~1 бар
+let ctrMemo = null;
+function rsiCentered(S1, int){
+  const win = CTR_WIN[int] || 52;
+  if(ctrMemo && ctrMemo.src===S1.v && ctrMemo.win===win) return ctrMemo.out;
+  const v = S1.v, raw = new Array(v.length).fill(null);
+  let sum=0, cnt=0;
+  for(let i=0;i<v.length;i++){
+    const q = v[i], ok = q!=null && isFinite(q);
+    if(ok){ sum+=q; cnt++; }
+    if(i>=win){ const o=v[i-win]; if(o!=null && isFinite(o)){ sum-=o; cnt--; } }
+    if(ok && i>=win-1 && cnt>=win*0.8) raw[i] = q - sum/cnt;
+  }
+  const k = 2/(CTR_SM+1); let p = null;
+  const cv = raw.map(q => q==null ? null : (p = p==null ? q : q*k + p*(1-k)));
+  const fin = cv.filter(q=>q!=null).sort((a,b)=>a-b);
+  const qt = f => fin.length ? fin[Math.min(fin.length-1, Math.floor(f*(fin.length-1)))] : 0;
+  const out = { ...S1, v:cv, ref:[0], signed:true,
+    name: `${S1.name} − средна ${win}`, ctr:{ lo:qt(0.15), hi:qt(0.85), win } };
+  ctrMemo = { src:S1.v, win, out };
+  return out;
+}
 
 function applyZMode(){
   if(!chain) return;
@@ -2669,6 +2699,8 @@ function zGeom(){
   // избраната редица може да я няма (без Coin Metrics остава само RSI)
   if(!S1){ const k = Object.keys(all)[0]; if(k){ S.indPick = k; S1 = all[k]; } }
   if(!S1 || !S1.v) return null;
+  if(S.indPick==='rsi' && S.rsiCtr)
+    S1 = rsiCentered(S1, (rsiData && rsiData.bars>20) ? rsiData.int : '1d');
   const idx = S1.v.map((q,i)=>i).filter(i=>S1.v[i]!=null && isFinite(S1.v[i]));
   const N = idx.length;
   if(N<10) return null;
@@ -2717,7 +2749,15 @@ function drawZ(){
 
   // зони: при Z-score по персентили, иначе по класическите прагове
   let marks = [];
-  if(S.indPick==='z' && chain){
+  const cb = document.getElementById('ind-ctr');
+  if(cb) cb.hidden = S.indPick!=='rsi';
+  if(S1.ctr){
+    // центриран RSI: 0 е собствената средна, зоните са горните/долните 15% от историята
+    const { lo, hi } = S1.ctr;
+    g.fillStyle = hot+'22';   g.fillRect(pad.l, y(mx), PW, Math.max(0, y(hi)-y(mx)));
+    g.fillStyle = short+'22'; g.fillRect(pad.l, y(lo), PW, Math.max(0, y(mn)-y(lo)));
+    marks = [lo, 0, hi].filter(q=>q>mn && q<mx);
+  } else if(S.indPick==='z' && chain){
     const hiZ = chain.q85, loZ = Math.min(0, chain.q15);
     g.fillStyle = hot+'22';   g.fillRect(pad.l, y(mx),  PW, Math.max(0, y(hiZ)-y(mx)));
     g.fillStyle = short+'22'; g.fillRect(pad.l, y(loZ), PW, Math.max(0, y(mn)-y(loZ)));
@@ -2808,6 +2848,7 @@ function drawZ(){
 
   const note = document.getElementById('ind-scalenote');
   if(note) note.textContent = (S.indLog ? (SC.name||'лог') : 'линейна скала')
+                            + (S1.ctr ? ' · центрирано' : '')
                             + (n<N ? ` · ${n} от ${N} дни` : '');
   renderZCross();
 }
@@ -3054,6 +3095,7 @@ document.getElementById('ind-help').innerHTML = `
   <p><b>NUPL</b> е нереализираната печалба минус загубата, разделена на пазарната капитализация — тоест каква част от текущата оценка е печалба на хартия. Не го тегля отделно: той е алгебрично следствие от MVRV, защото (пазарна − реализирана) / пазарна е същото като 1 − 1/MVRV. Затова и не е независимо потвърждение на MVRV, а негов пренареден запис: двата показателя не могат да си противоречат.</p>
   <p><b>Mayer Multiple</b> е цената, разделена на 200-дневната средна. Проста мярка за разтегнатост, използвана от 2014 насам.</p>
   <p><b>RSI</b> измерва скоростта на движението, не посоката. Крайните стойности не са самостоятелен сигнал за обрат — при силен тренд RSI може да стои над 70 със седмици.</p>
+  <p><b>Центриран RSI.</b> Бутонът „Центрирай“ изважда от RSI собствената му плъзгаща средна (52 бара при седмичен, 200 при дневен) и леко го изглажда. Причината: в бичи години RSI се върти около 60–65, в мечи около 40, така че прагове 30/70 са несиметрични спрямо реалните вълни. Центриран, той се люлее около 0, а стойността се чете като „толкова пункта над/под нормалното за последната година“. Средната е само назад, без бъдещи точки. Първият прозорец остава празен, защото там още няма достатъчно история. Зоните са горните и долните 15% от цялата центрирана история.</p>
   <p><b>ROI</b> е възвръщаемостта от покупка преди определено време и държане до съответния ден. Прозорецът е плъзгащ, не от фиксирана дата: всяка точка на графиката отговаря на въпроса „колко би спечелил, ако беше купил точно толкова време преди този ден". Затова ROI 4 години се чете като дали пълен цикъл държане се е изплатило. При биткойн този показател исторически не е слизал под нулата, но зад това стоят три-четири цикъла — извадка, твърде малка за правило.</p>
   <p><b>ROI от халвинга</b> се нулира при всеки халвинг и показва докъде е стигнал текущият цикъл спрямо предишните на същия етап. Само за биткойн — при другите активи халвинг няма. Сравнението между цикли е съпоставяне на различни пазарни условия, лихвена среда и размер на пазара, тоест прилика във формата не е причинна връзка.</p>
   <p><b>Риск (съставен, наш).</b> Това не е индексът „on-chain risk“, който се цитира в твитове — неговата формула не е публикувана и не може да се възпроизведе. Това е наша мярка от три съставки: цена спрямо 200-дневната средна, MVRV, и цена спрямо историческия връх. Всяка се превръща в персентил спрямо историята на самия актив, после се взема простата средна. Скалата е 0 до 1, тоест 0,17 значи „в долните 17% от своята история“.</p>
@@ -3082,6 +3124,12 @@ document.getElementById('z-mode').addEventListener('click', e=>{
     if(!S.zCur) zMark = null;
     drawZ(); return;
   }
+  if(e.target.id==='ind-ctr'){
+    S.rsiCtr = !S.rsiCtr;
+    e.target.setAttribute('aria-pressed', S.rsiCtr);
+    zView = null; zMark = null;   // центрираната редица е по-къса — старият зум не важи
+    drawZ(); return;
+  }
   if(e.target.id==='ind-log'){
     S.indLog = !S.indLog;
     e.target.setAttribute('aria-pressed', S.indLog);
@@ -3090,7 +3138,7 @@ document.getElementById('z-mode').addEventListener('click', e=>{
   }
   const b = e.target.closest('button[data-zm]'); if(!b) return;
   S.zMode = b.dataset.zm;
-  document.querySelectorAll('#z-mode button').forEach(x=>x.setAttribute('aria-pressed', x===b));
+  document.querySelectorAll('#z-mode button[data-zm]').forEach(x=>x.setAttribute('aria-pressed', x===b));
   loadInd();
 });
 document.getElementById('rsi-n').addEventListener('change', e=>{
