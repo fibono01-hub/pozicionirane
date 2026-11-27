@@ -22,6 +22,11 @@
   --long:#E0A03C;
   --short:#3FB6A6;
   --hot:#E4685B;
+  /* Линията на цената във фоновия план на графиките с показатели. Беше --ink-dim,
+     тоест същият синьо-сив като самия показател, само по-светъл — двете криви се
+     различаваха само по светлота. Този тон е единственият в палитрата без вече
+     закачен смисъл, затова не влиза в конфликт с нагоре/надолу или с лонг/шорт. */
+  --pxline:#6471CE;
   /* посока на цената: тюркоазът се чете като зелено, тоест нагоре */
   --up:#3FB6A6;
   --down:#E0A03C;
@@ -461,6 +466,17 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
   <div class="controls" id="i-int">
     <button data-iint="1d" aria-pressed="true">Дневно</button>
     <button data-iint="1w" aria-pressed="false">Седмично</button>
+  </div>
+  <div class="addma" id="rsi-ctl">
+    <span class="note" style="margin:0;align-self:center">RSI:</span>
+    <input id="rsi-n" type="number" inputmode="numeric" min="2" max="100" value="14" placeholder="период">
+    <select id="rsi-int">
+      <option value="1h">часови</option>
+      <option value="4h">4-часови</option>
+      <option value="1d" selected>дневни</option>
+      <option value="3d">3-дневни</option>
+      <option value="1w">седмични</option>
+    </select>
   </div>
 
   <section>
@@ -954,7 +970,7 @@ footer{border-top:1px solid var(--rule);padding-top:16px;font-size:12px;color:va
 </div>
 
 <footer>
-  <span style="font-family:var(--mono);color:var(--ink)">версия 64</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
+  <span style="font-family:var(--mono);color:var(--ink)">версия 65</span> · Всичко тук са реални отчетени данни от борсите, не моделирани ликвидационни нива.
   Фъндингът и откритият интерес идват от публичните API-та на Binance, Bybit, OKX и Hyperliquid.
   Ако някоя борса покаже грешка, най-честата причина е блокиране по регион или ограничение на заявките — изчакай минута и обнови.
 </footer>
@@ -2123,6 +2139,7 @@ function loadTab(tab){
 // отрези, маркери, измервания, кеширани редици и — важното — ценовите полета.
 // Иначе индексите сочат в чужда редица, а в полетата стоят цени на друга монета.
 function resetSymState(){
+  rsiKl = null; rsiData = null;
   // отрези и маркери: пазят индекси, които в нова редица значат друго
   saved = []; sel = null; mView = null; mMark = null;
   vpView = null; vpMark = null; vpGeomCache = null;
@@ -2252,19 +2269,61 @@ document.getElementById('ma-add').addEventListener('click', ()=>{
 const CM = 'https://community-api.coinmetrics.io/v4';
 const CM_ASSET = { BTC:'btc', ETH:'eth', SOL:'sol' };
 let chain = null;
-S.iInt = '1d';
+S.iInt = '1d'; S.rsiN = 14; S.rsiInt = '1d';
 
-function rsi(vals, n=14){
-  if(vals.length < n+1) return null;
+// Цялата редица, не само последната стойност: изглаждането на Уайлдър е
+// рекурсивно, затова редицата и последната стойност трябва да идват от един и
+// същ код — иначе показалецът и линията могат да се разминат.
+function rsiSeries(vals, n=14){
+  const out = new Array(vals.length).fill(null);
+  if(vals.length < n+1) return out;
   let g=0, l=0;
   for(let i=1;i<=n;i++){ const d=vals[i]-vals[i-1]; d>=0 ? g+=d : l-=d; }
   g/=n; l/=n;
+  out[n] = l===0 ? 100 : 100 - 100/(1+g/l);
   for(let i=n+1;i<vals.length;i++){
     const d=vals[i]-vals[i-1];
     g = (g*(n-1) + (d>0?d:0))/n;
     l = (l*(n-1) + (d<0?-d:0))/n;
+    out[i] = l===0 ? 100 : 100 - 100/(1+g/l);
   }
-  return l===0 ? 100 : 100 - 100/(1+g/l);
+  return out;
+}
+function rsi(vals, n=14){
+  const a = rsiSeries(vals, n);
+  for(let i=a.length-1;i>=0;i--) if(a[i]!=null) return a[i];
+  return null;
+}
+
+/* --- RSI със собствен период и интервал --- */
+const RSI_INTN = {'1h':'часови','4h':'4-часови','1d':'дневни','3d':'3-дневни','1w':'седмични'};
+let rsiKl = null;     // кеш на свещите: {key, k}
+let rsiData = null;   // {int, n, t, v, px, pct}
+
+function rsiBuild(){
+  if(!rsiKl){ rsiData = null; return; }
+  const n = Math.max(2, Math.min(100, Math.round(S.rsiN) || 14));
+  const k = rsiKl.k;
+  const px = k.map(r=>parseFloat(r[4])), t = k.map(r=>r[0]);
+  const v = rsiSeries(px, n);
+  // персентил на текущата стойност в собствената ѝ история: прагът 30 е наследен
+  // от период 14 и при къс период сигнализира почти непрекъснато
+  const fin = v.filter(q=>q!=null && isFinite(q));
+  let pct = null;
+  const lastV = (()=>{ for(let i=v.length-1;i>=0;i--) if(v[i]!=null) return v[i]; return null; })();
+  if(lastV!=null && fin.length>20)
+    pct = fin.filter(q=>q < lastV).length / fin.length * 100;
+  rsiData = { int:S.rsiInt, n, t, v, px, pct, last:lastV, bars:fin.length };
+}
+
+async function rsiLoad(){
+  const key = S.sym+'|'+S.rsiInt;
+  if(!rsiKl || rsiKl.key!==key){
+    try{
+      rsiKl = { key, k: await j(`${spotBase}/api/v3/klines?symbol=${S.sym}USDT&interval=${S.rsiInt}&limit=1000`) };
+    }catch(e){ rsiKl = null; }
+  }
+  rsiBuild();
 }
 const stdev = a => { const m=a.reduce((x,y)=>x+y,0)/a.length;
   return Math.sqrt(a.reduce((s,v)=>s+(v-m)**2,0)/a.length); };
@@ -2471,7 +2530,12 @@ function riskCalc(c, s200, mvrv, mode, sym){
 }
 
 function indSeries(){
-  if(!chain || !chain.all || !chain.all.px) return {};
+  // RSI се смята от свещите на Binance и не зависи от Coin Metrics: ако веригата
+  // не се зареди, линията му пак трябва да се вижда
+  const base = (rsiData && rsiData.bars>20)
+    ? { rsi: { t:rsiData.t, v:rsiData.v, px:rsiData.px, ref:[30,70],
+               name:`RSI ${rsiData.n} · ${RSI_INTN[rsiData.int]}` } } : {};
+  if(!chain || !chain.all || !chain.all.px) return base;
   const t = chain.all.t, px = chain.all.px;
   const ok = px.map(v=>v!=null);
   const c = px.map(v=>v==null?NaN:v);
@@ -2531,7 +2595,10 @@ function indSeries(){
     // NUPL = (пазарна − реализирана) / пазарна = 1 − 1/MVRV, тоест чиста алгебра
     nupl:   { t, v:chain.mvrv.map(q=>(q&&isFinite(q)&&q>0) ? 1-1/q : null), px,
               name:'NUPL', ref:[0,0.25,0.5,0.75], signed:true },
-    rsi:    { t, v:r, px, name:'RSI 14д', ref:[30,70] },
+    rsi:    (rsiData && rsiData.bars>20)
+            ? { t:rsiData.t, v:rsiData.v, px:rsiData.px, ref:[30,70],
+                name:`RSI ${rsiData.n} · ${RSI_INTN[rsiData.int]}` }
+            : { t, v:r, px, name:'RSI 14д', ref:[30,70] },
     mayer:  { t, v:c.map((q,i)=>s200[i]?q/s200[i]:null),  px, name:'Mayer Multiple', ref:[0.8,2.4] },
     w200:   { t, v:c.map((q,i)=>s1400[i]?q/s1400[i]:null), px, name:'Спрямо 200-седмичната', ref:[1] },
     vol:    { t, v:vol, px, name:'Волатилност 30д', ref:[] },
@@ -2596,9 +2663,11 @@ S.zCur = false;
 
 function zGeom(){
   const c = document.getElementById('zchart');
-  if(!c || !chain) return null;
+  if(!c) return null;
   const all = indSeries();
-  const S1 = all[S.indPick] || all.z;
+  let S1 = all[S.indPick] || all.z;
+  // избраната редица може да я няма (без Coin Metrics остава само RSI)
+  if(!S1){ const k = Object.keys(all)[0]; if(k){ S.indPick = k; S1 = all[k]; } }
   if(!S1 || !S1.v) return null;
   const idx = S1.v.map((q,i)=>i).filter(i=>S1.v[i]!=null && isFinite(S1.v[i]));
   const N = idx.length;
@@ -2648,7 +2717,7 @@ function drawZ(){
 
   // зони: при Z-score по персентили, иначе по класическите прагове
   let marks = [];
-  if(S.indPick==='z'){
+  if(S.indPick==='z' && chain){
     const hiZ = chain.q85, loZ = Math.min(0, chain.q15);
     g.fillStyle = hot+'22';   g.fillRect(pad.l, y(mx),  PW, Math.max(0, y(hiZ)-y(mx)));
     g.fillStyle = short+'22'; g.fillRect(pad.l, y(loZ), PW, Math.max(0, y(mn)-y(loZ)));
@@ -2688,7 +2757,7 @@ function drawZ(){
       g.beginPath(); let st=false;
       for(let i=i0;i<=i1;i++){ const q=S1.px[idx[i]]; if(q==null||q<=0) continue;
         st ? g.lineTo(x(i),py(q)) : (g.moveTo(x(i),py(q)), st=true); }
-      g.strokeStyle = dim; g.lineWidth=1.5; g.stroke();
+      g.strokeStyle = css.getPropertyValue('--pxline').trim(); g.lineWidth=1.6; g.stroke();
     }
   }
 
@@ -2843,7 +2912,8 @@ async function loadInd(){
     const last = cl[cl.length-1];
     const unit = S.iInt==='1w' ? 'седмици' : 'дни';
 
-    const r = rsi(cl, 14);
+    await rsiLoad();
+    const r = rsiData ? rsiData.last : rsi(cl, 14);
     const dc = d.map(k=>parseFloat(k[4]));
     const wc = w.map(k=>parseFloat(k[4]));
     const sma200d = dc.length>=200 ? dc.slice(-200).reduce((a,b)=>a+b,0)/200 : null;
@@ -2871,11 +2941,16 @@ async function loadInd(){
       :           'Дълбоко отрицателна. Исторически такива нива са се срещали около циклични дъна, но това се вижда само след факта.';
 
     tech.innerHTML =
-      gauge(`RSI 14 (${unit})`, r, '', 0, 100,
+      gauge(rsiData ? `RSI ${rsiData.n} (${RSI_INTN[rsiData.int]})` : `RSI 14 (${unit})`,
+        r, '', 0, 100,
         [{w:30,c:T},{w:40,c:N},{w:30,c:R}],
-        r==null ? '' : r>70 ? 'Над 70 — инерцията е силна, но разтегната. Исторически повече значи продължение, отколкото обрат, ако цената е над дългите средни.'
+        (r==null ? '' : r>70 ? 'Над 70 — инерцията е силна, но разтегната. Исторически повече значи продължение, отколкото обрат, ако цената е над дългите средни.'
                 : r<30 ? 'Под 30 — изчерпване на продавачите. Само по себе си не е сигнал за вход.'
-                : 'В неутралната зона, без крайност в инерцията.') +
+                : 'В неутралната зона, без крайност в инерцията.')
+        + (rsiData && rsiData.pct!=null
+           ? ` По-ниско от това е било в ${fmt(rsiData.pct,0)}% от ${rsiData.bars} ${RSI_INTN[rsiData.int]} бара.`
+             + (rsiData.n < 10 ? ' При толкова къс период прагът 30 се достига често — чети персентила, не прага.' : '')
+           : '')) +
       gauge('Mayer Multiple', mayer, '', 0.4, 3,
         [{w:16,c:T},{w:64,c:N},{w:20,c:R}],
         mayer==null ? '' : mayer>2.4 ? 'Над 2.4 — цената е далеч над 200-дневната. Исторически рядка и краткотрайна зона.'
@@ -2915,7 +2990,8 @@ async function loadInd(){
         : `Не успях да взема данните. Причина: ${cmError||'неизвестна'}`;
       ch.innerHTML = `<div class="ind na"><div class="head"><span>MVRV</span><b>—</b></div>
         <div class="foot">${why}</div></div>`;
-      document.getElementById('ind-pick').innerHTML=''; drawZ(); return;
+      // RSI не зависи от веригата, затова чиповете и графиката остават
+      renderPick(); drawZ(); return;
     }
     if(S.zMode==='roll' && !c2.roll){
       S.zMode='all'; applyZMode();
@@ -2967,6 +3043,7 @@ async function loadInd(){
   }catch(e){
     ch.innerHTML = `<div class="ind na"><div class="head"><span>MVRV</span><b>—</b></div>
       <div class="foot">Няма връзка с Coin Metrics. Причина: ${cmError || e.message || 'неизвестна'}</div></div>`;
+    renderPick(); drawZ();
   }
 }
 
@@ -3014,6 +3091,17 @@ document.getElementById('z-mode').addEventListener('click', e=>{
   const b = e.target.closest('button[data-zm]'); if(!b) return;
   S.zMode = b.dataset.zm;
   document.querySelectorAll('#z-mode button').forEach(x=>x.setAttribute('aria-pressed', x===b));
+  loadInd();
+});
+document.getElementById('rsi-n').addEventListener('change', e=>{
+  const v = parseInt(e.target.value, 10);
+  if(!isFinite(v)) return;
+  S.rsiN = Math.max(2, Math.min(100, v));
+  e.target.value = S.rsiN;
+  loadInd();
+});
+document.getElementById('rsi-int').addEventListener('change', e=>{
+  S.rsiInt = e.target.value;
   loadInd();
 });
 document.getElementById('i-int').addEventListener('click', e=>{
